@@ -1,11 +1,18 @@
 import { setIcon } from 'obsidian';
-import type { CardNode, DeckNode } from '../../domain/head/types';
+import type { CardNode, DeckNode, DeckType } from '../../domain/head/types';
 import type { SyncPanelState } from './SyncPanelState';
 
 export interface SyncPanelTreeHandlers {
 	onToggleCollapse: (deckId: string) => void;
 	onToggleSelect: (node: DeckNode | CardNode, selected: boolean) => void;
 	onSyncStub: (node: DeckNode | CardNode) => void;
+	onRootSettings?: () => void;
+	onCardOpen?: (card: CardNode) => void;
+}
+
+export interface SyncPanelTreeOptions {
+	/** Parse type shown as a badge on the root deck row. */
+	parseType: DeckType;
 }
 
 export function renderSyncPanelTree(
@@ -13,10 +20,11 @@ export function renderSyncPanelTree(
 	root: DeckNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	options: SyncPanelTreeOptions,
 ): void {
 	container.empty();
 	const list = container.createDiv({ cls: 'dta-sync-tree' });
-	renderDeck(list, root, state, handlers, 0, null);
+	renderDeck(list, root, state, handlers, options, 0, null);
 }
 
 function renderDeck(
@@ -24,6 +32,7 @@ function renderDeck(
 	deck: DeckNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	options: SyncPanelTreeOptions,
 	depth: number,
 	siblingIndex: number | null,
 ): void {
@@ -34,6 +43,7 @@ function renderDeck(
 
 	const hasChildren = deck.children.length > 0;
 	const collapsed = state.isCollapsed(deck.id);
+	const isRoot = depth === 0;
 
 	if (hasChildren) {
 		row.addClass('is-clickable');
@@ -63,12 +73,36 @@ function renderDeck(
 	row.createSpan({
 		cls: 'dta-sync-name',
 		text: label,
+		attr: isRoot ? { title: `Root deck: ${deck.name}` } : undefined,
 	});
+
+	if (isRoot) {
+		row.createSpan({
+			cls: 'dta-sync-type-badge',
+			text: options.parseType,
+			attr: { title: `deckType: ${options.parseType}` },
+		});
+	}
 
 	row.createSpan({
 		cls: 'dta-sync-count',
 		text: String(deck.cardCount),
 	});
+
+	if (isRoot && handlers.onRootSettings) {
+		const settingsBtn = row.createEl('button', {
+			cls: 'dta-sync-action clickable-icon',
+			attr: {
+				'aria-label': '牌组 YAML 设置',
+				title: '牌组 YAML 设置',
+			},
+		});
+		setIcon(settingsBtn, 'settings');
+		settingsBtn.addEventListener('click', (evt) => {
+			evt.stopPropagation();
+			handlers.onRootSettings?.();
+		});
+	}
 
 	const syncBtn = row.createEl('button', {
 		cls: 'dta-sync-action clickable-icon',
@@ -106,6 +140,7 @@ function renderDeck(
 				child,
 				state,
 				handlers,
+				options,
 				depth + 1,
 				deckSibling,
 			);
@@ -122,7 +157,18 @@ function renderCard(
 	handlers: SyncPanelTreeHandlers,
 ): void {
 	const row = parent.createDiv({
-		cls: 'dta-sync-row dta-sync-row--card',
+		cls: 'dta-sync-row dta-sync-row--card is-clickable',
+		attr: { title: 'Double-click to open in Obsidian' },
+	});
+
+	row.addEventListener('dblclick', (evt) => {
+		const target = evt.target as HTMLElement | null;
+		if (
+			target?.closest('input, button, .dta-sync-action, .dta-sync-check')
+		) {
+			return;
+		}
+		handlers.onCardOpen?.(card);
 	});
 
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });

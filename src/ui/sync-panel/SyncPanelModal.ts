@@ -1,7 +1,9 @@
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import type DeckToAnkiPlugin from '../../../main';
+import { parseFrontmatter, upsertDeckYaml } from '../../domain/head/frontmatter';
 import { parseHeadFile } from '../../domain/head/parseHeadFile';
-import type { ParsedHeadFile } from '../../domain/head/types';
+import type { CardNode, ParsedHeadFile } from '../../domain/head/types';
+import { openFileDeckSettings } from './FileDeckSettingsModal';
 import { SyncPanelState } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
 
@@ -17,6 +19,8 @@ export class SyncPanelModal extends Modal {
 	constructor(plugin: DeckToAnkiPlugin) {
 		super(plugin.app);
 		this.plugin = plugin;
+		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
+		this.state.cardLevel = this.plugin.settings.cardHeadingLevel || 4;
 	}
 
 	onOpen(): void {
@@ -83,7 +87,7 @@ export class SyncPanelModal extends Modal {
 		});
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.addEventListener('click', () => {
-			void this.reload();
+			void this.reload({ preserveTab: true });
 		});
 
 		const bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
@@ -100,11 +104,11 @@ export class SyncPanelModal extends Modal {
 		});
 
 		const updateBtn = footer.createEl('button', {
-			cls: 'dta-sync-footer-btn mod-cta',
+			cls: 'dta-sync-footer-btn mod-success',
 			text: 'Update',
 		});
 		updateBtn.addEventListener('click', () => {
-			new Notice('Update 同步尚未实现');
+			void this.handleUpdate();
 		});
 
 		const cancelBtn = footer.createEl('button', {
@@ -116,27 +120,37 @@ export class SyncPanelModal extends Modal {
 		});
 	}
 
-	private async reload(): Promise<void> {
+	private async reload(options?: { preserveTab?: boolean }): Promise<void> {
+		const previousTab = this.state.tab;
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
 			this.parsed = null;
 			this.statusEl.setText('请先打开一个 Markdown 笔记。');
 			this.treeHostEl.empty();
-			this.updateTabs();
+			this.updateChromeState();
 			return;
 		}
 
 		const content = await this.app.vault.read(file);
+		const meta = parseFrontmatter(content);
+		const deckType =
+			meta.deckType ?? this.plugin.settings.defaultDeckType ?? 'head';
+		const deckLevel =
+			meta.deckLevel ?? this.plugin.settings.cardHeadingLevel ?? 4;
+
 		this.parsed = parseHeadFile(file.path, content, {
-			defaultDeckType: this.plugin.settings.defaultDeckType,
-			cardHeadingLevel: this.plugin.settings.cardHeadingLevel,
+			deckType,
+			deckLevel,
 		});
 		this.state.resetFromParsed(this.parsed);
+		if (options?.preserveTab) {
+			this.state.tab = previousTab;
+		}
 		this.renderBody();
 	}
 
 	private renderBody(): void {
-		this.updateTabs();
+		this.updateChromeState();
 		this.treeHostEl.empty();
 
 		if (!this.parsed) {
@@ -145,64 +159,161 @@ export class SyncPanelModal extends Modal {
 		}
 
 		const showArchived = this.state.tab === 'archived';
-		if (this.parsed.archived !== showArchived) {
+		if (this.parsed.deckStatus !== showArchived) {
 			this.statusEl.setText(
 				showArchived
-					? '当前文件未归档（ARCHIVED 不为 true）。'
-					: '当前文件已归档，请切换到「已归档」查看。',
+					? '当前文件 deckStatus 不为 true。'
+					: '当前文件 deckStatus 为 true，请切换到「已归档」查看。',
 			);
 			return;
 		}
 
+		const yamlHint = this.parsed.yamlDeckType
+			? `YAML ${this.parsed.yamlDeckType}/H${this.parsed.yamlDeckLevel ?? this.parsed.deckLevel}`
+			: 'YAML 未完整设置';
 		const warningText =
 			this.parsed.warnings.length > 0
 				? this.parsed.warnings.join('；')
 				: '';
-		const summary = `${this.parsed.fileName} · ${this.parsed.root.cardCount} 张卡片 · ${this.parsed.deckType}`;
+		const summary = `${this.parsed.deckName} · ${this.parsed.root.cardCount} 张 · ${this.parsed.deckType} · H${this.parsed.deckLevel} · ${yamlHint}`;
 		this.statusEl.setText(
 			warningText ? `${summary} — ${warningText}` : summary,
 		);
 
+		if (this.parsed.deckType !== 'head') {
+			renderSyncPanelTree(
+				this.treeHostEl,
+				this.parsed.root,
+				this.state,
+				{
+					onToggleCollapse: () => undefined,
+					onToggleSelect: () => undefined,
+					onSyncStub: () => undefined,
+					onRootSettings: () => this.openRootSettings(),
+				},
+				{ parseType: this.parsed.deckType },
+			);
+			this.treeHostEl.createDiv({
+				cls: 'dta-sync-empty',
+				text: `${this.parsed.deckType} 解析尚未实现。点根牌组设置修改 deckType。`,
+			});
+			return;
+		}
+
 		if (
-			this.parsed.deckType === 'head' &&
 			this.parsed.root.cardCount === 0 &&
 			this.parsed.root.children.length === 0
 		) {
+			renderSyncPanelTree(
+				this.treeHostEl,
+				this.parsed.root,
+				this.state,
+				{
+					onToggleCollapse: () => undefined,
+					onToggleSelect: () => undefined,
+					onSyncStub: () => undefined,
+					onRootSettings: () => this.openRootSettings(),
+				},
+				{ parseType: this.parsed.deckType },
+			);
 			this.treeHostEl.createDiv({
 				cls: 'dta-sync-empty',
-				text: '未识别到标题牌组或 H4 卡片。',
+				text: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
 			});
 			return;
 		}
 
-		if (this.parsed.deckType !== 'head') {
-			this.treeHostEl.createDiv({
-				cls: 'dta-sync-empty',
-				text: `当前为 ${this.parsed.deckType} 模式，本面板仅支持 head。`,
-			});
-			return;
-		}
-
-		renderSyncPanelTree(this.treeHostEl, this.parsed.root, this.state, {
-			onToggleCollapse: (deckId) => {
-				this.state.toggleCollapsed(deckId);
-				this.renderBody();
+		renderSyncPanelTree(
+			this.treeHostEl,
+			this.parsed.root,
+			this.state,
+			{
+				onToggleCollapse: (deckId) => {
+					this.state.toggleCollapsed(deckId);
+					this.renderBody();
+				},
+				onToggleSelect: (node, selected) => {
+					this.state.setSelectedCascade(node, selected);
+					this.renderBody();
+				},
+				onSyncStub: (node) => {
+					const label =
+						node.kind === 'deck'
+							? `牌组「${node.name}」`
+							: `卡片「${node.front}」`;
+					new Notice(`${label}：同步功能尚未实现`);
+				},
+				onRootSettings: () => this.openRootSettings(),
+				onCardOpen: (card) => {
+					void this.openCard(card);
+				},
 			},
-			onToggleSelect: (node, selected) => {
-				this.state.setSelectedCascade(node, selected);
-				this.renderBody();
-			},
-			onSyncStub: (node) => {
-				const label =
-					node.kind === 'deck'
-						? `牌组「${node.name}」`
-						: `卡片「${node.front}」`;
-				new Notice(`${label}：同步功能尚未实现`);
-			},
-		});
+			{ parseType: this.parsed.deckType },
+		);
 	}
 
-	private updateTabs(): void {
+	private async openCard(card: CardNode): Promise<void> {
+		if (!this.parsed) {
+			return;
+		}
+
+		const filePath = this.parsed.filePath;
+		const heading = card.front.trim();
+		// In-app silent jump (avoid obsidian:// which prompts "open file").
+		const linktext = heading ? `${filePath}#${heading}` : filePath;
+		await this.app.workspace.openLinkText(linktext, '', false);
+	}
+
+	private openRootSettings(): void {
+		const file = this.getActiveMarkdownFile();
+		if (!file) {
+			new Notice('请先打开一个 Markdown 笔记');
+			return;
+		}
+
+		openFileDeckSettings(
+			this.plugin,
+			file,
+			{
+				deckType: this.state.parseType,
+				deckName: this.parsed?.yamlDeckName ?? '',
+				deckLevel: this.state.cardLevel,
+				deckStatus:
+					this.parsed?.deckStatus ?? this.state.tab === 'archived',
+			},
+			async () => {
+				await this.reload({ preserveTab: true });
+			},
+		);
+	}
+
+	private async handleUpdate(): Promise<void> {
+		const file = this.getActiveMarkdownFile();
+		if (!file) {
+			new Notice('请先打开一个 Markdown 笔记');
+			return;
+		}
+
+		const content = await this.app.vault.read(file);
+		const next = upsertDeckYaml(content, {
+			deckType: this.state.parseType,
+			deckName: this.parsed?.yamlDeckName,
+			deckLevel:
+				this.state.parseType === 'head' ? this.state.cardLevel : undefined,
+			deckStatus: this.state.tab === 'archived',
+		});
+
+		if (next === content) {
+			new Notice('YAML 已是最新');
+		} else {
+			await this.app.vault.modify(file, next);
+			new Notice('已写入 YAML：deckType / deckName / deckLevel / deckStatus');
+		}
+
+		await this.reload({ preserveTab: true });
+	}
+
+	private updateChromeState(): void {
 		this.learningTabEl.toggleClass(
 			'is-active',
 			this.state.tab === 'learning',

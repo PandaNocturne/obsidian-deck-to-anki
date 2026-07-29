@@ -31,7 +31,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Default deck mode')
 			.setDesc(
-				'Fallback when the note has no deck type in YAML. Sync panel currently supports head only.',
+				'Default parse mode in the sync panel. Notes are always parsed from the active file; Update writes deckType to YAML.',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -64,7 +64,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',
-			text: 'Folder and tag scan settings come later. Notes use uppercase YAML properties for deck type and archived.',
+			text: 'Folder and tag scan settings come later. Notes use camelCase YAML: deckType, deckLevel, deckStatus.',
 		});
 	}
 }

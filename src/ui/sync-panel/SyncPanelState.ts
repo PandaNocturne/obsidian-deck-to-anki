@@ -1,4 +1,9 @@
-import type { CardNode, DeckNode, ParsedHeadFile } from '../../domain/head/types';
+import type {
+	CardNode,
+	DeckNode,
+	DeckType,
+	ParsedHeadFile,
+} from '../../domain/head/types';
 
 export type SyncPanelTab = 'learning' | 'archived';
 
@@ -6,15 +11,21 @@ export class SyncPanelState {
 	readonly selected = new Set<string>();
 	readonly collapsed = new Set<string>();
 	tab: SyncPanelTab = 'learning';
+	/** Panel parse mode; defaults to head. */
+	parseType: DeckType = 'head';
+	/** Active card heading level for parse. */
+	cardLevel = 4;
 	private root: DeckNode | null = null;
 
 	resetFromParsed(parsed: ParsedHeadFile): void {
 		this.root = parsed.root;
+		this.parseType = parsed.deckType;
+		this.cardLevel = parsed.deckLevel;
 		this.selected.clear();
 		this.collapsed.clear();
 		this.selectAll(parsed.root);
 		this.collapseAllExceptRoot(parsed.root);
-		this.tab = parsed.archived ? 'archived' : 'learning';
+		this.tab = parsed.deckStatus ? 'archived' : 'learning';
 	}
 
 	private selectAll(node: DeckNode | CardNode): void {

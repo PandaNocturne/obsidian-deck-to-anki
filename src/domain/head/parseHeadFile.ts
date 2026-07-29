@@ -1,15 +1,14 @@
 import { findIdMarkerInLines } from './idMarker';
+import { formatDefaultDeckName } from './formatDefaultDeckName';
+import { parseFrontmatter } from './frontmatter';
 import type {
 	CardNode,
 	DeckNode,
-	DeckType,
 	ParseHeadFileOptions,
 	ParsedHeadFile,
 } from './types';
 
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
-const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
-const DECK_TYPE_VALUES: DeckType[] = ['head', 'basic', 'file'];
 
 interface RawHeading {
 	level: number;
@@ -17,60 +16,8 @@ interface RawHeading {
 	lineIndex: number;
 }
 
-interface FrontmatterMeta {
-	deckType?: DeckType;
-	archived: boolean;
-	warnings: string[];
-}
-
 function stripTrailingHeadingMarks(text: string): string {
 	return text.replace(/\s+#+\s*$/, '').trim();
-}
-
-function parseFrontmatter(content: string): FrontmatterMeta {
-	const warnings: string[] = [];
-	const match = content.match(FRONTMATTER_REGEXP);
-	if (!match?.[1]) {
-		return { archived: false, warnings };
-	}
-
-	const body = match[1];
-	let deckType: DeckType | undefined;
-	let archived = false;
-
-	for (const rawLine of body.split(/\r?\n/)) {
-		const line = rawLine.trim();
-		if (!line || line.startsWith('#')) {
-			continue;
-		}
-
-		const colon = line.indexOf(':');
-		if (colon <= 0) {
-			continue;
-		}
-
-		const key = line.slice(0, colon).trim().replace(/^['"]|['"]$/g, '');
-		let value = line.slice(colon + 1).trim();
-		value = value.replace(/^['"]|['"]$/g, '');
-
-		if (key === 'DECK TYPE') {
-			const normalized = value.toLowerCase() as DeckType;
-			if (DECK_TYPE_VALUES.includes(normalized)) {
-				deckType = normalized;
-			} else if (value) {
-				warnings.push(`未知 DECK TYPE: ${value}`);
-			}
-		} else if (key === 'ARCHIVED') {
-			archived =
-				value === 'true' ||
-				value === 'True' ||
-				value === 'TRUE' ||
-				value === '1' ||
-				value === 'yes';
-		}
-	}
-
-	return { deckType, archived, warnings };
 }
 
 function collectHeadings(lines: string[]): RawHeading[] {
@@ -181,6 +128,10 @@ function basenameWithoutExt(filePath: string): string {
 	return base.replace(/\.md$/i, '');
 }
 
+/**
+ * Parse the current note as a deck tree.
+ * Parse mode/level come from options (resolved from YAML + defaults by caller).
+ */
 export function parseHeadFile(
 	filePath: string,
 	content: string,
@@ -188,37 +139,45 @@ export function parseHeadFile(
 ): ParsedHeadFile {
 	const meta = parseFrontmatter(content);
 	const warnings = [...meta.warnings];
-	const deckType = meta.deckType ?? options.defaultDeckType;
+	const deckType = options.deckType;
 	const fileName = basenameWithoutExt(filePath);
+	const deckName = meta.deckName?.trim() || formatDefaultDeckName(filePath);
 	const lines = content.split(/\r?\n/);
-	const cardLevel = options.cardHeadingLevel;
+	const cardLevel = options.deckLevel;
 
 	const root: DeckNode = {
 		kind: 'deck',
 		id: `deck:root:${filePath}`,
-		name: fileName,
-		deckPath: fileName,
+		name: deckName,
+		deckPath: deckName,
 		headingLevel: 0,
 		lineStart: -1,
 		cardCount: 0,
 		children: [],
 	};
 
+	const baseResult = {
+		filePath,
+		fileName,
+		deckName,
+		deckType,
+		deckLevel: cardLevel,
+		yamlDeckType: meta.deckType,
+		yamlDeckName: meta.deckName,
+		yamlDeckLevel: meta.deckLevel,
+		deckStatus: meta.deckStatus,
+		root,
+		warnings,
+	};
+
 	if (deckType !== 'head') {
-		warnings.push(`当前 DECK TYPE 为 ${deckType}，本面板仅支持 head`);
-		return {
-			filePath,
-			fileName,
-			deckType,
-			archived: meta.archived,
-			root,
-			warnings,
-		};
+		warnings.push(`${deckType} 解析尚未实现`);
+		return baseResult;
 	}
 
 	const headings = collectHeadings(lines);
 	const deckStack: DeckNode[] = [root];
-	const pathStack: string[] = [fileName];
+	const pathStack: string[] = [deckName];
 	let cardSeq = 0;
 
 	for (let hi = 0; hi < headings.length; hi++) {
@@ -264,7 +223,6 @@ export function parseHeadFile(
 			continue;
 		}
 
-		// Deck group: H1–H3 (any level < cardLevel)
 		while (
 			deckStack.length > 1 &&
 			(deckStack[deckStack.length - 1]?.headingLevel ?? 0) >=
@@ -296,12 +254,5 @@ export function parseHeadFile(
 	pruneEmptyDecks(root);
 	recountCards(root);
 
-	return {
-		filePath,
-		fileName,
-		deckType,
-		archived: meta.archived,
-		root,
-		warnings,
-	};
+	return baseResult;
 }

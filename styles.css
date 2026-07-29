@@ -44,6 +44,21 @@ if you want to view the source, please visit the github repository of this plugi
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
 }
+.dta-sync-type-tabs {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.dta-file-settings-hint {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
+.dta-file-settings-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
 .dta-sync-tab {
   padding: 0.45rem 0.7rem;
   border: none;
@@ -56,9 +71,9 @@ if you want to view the source, please visit the github repository of this plugi
   transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 .dta-sync-tab.is-active {
-  background: var(--background-primary);
-  color: var(--text-normal);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  box-shadow: none;
 }
 .dta-sync-tab:hover:not(.is-active) {
   color: var(--text-normal);
@@ -204,6 +219,19 @@ if you want to view the source, please visit the github repository of this plugi
   color: var(--text-muted);
   font-weight: 400;
 }
+.dta-sync-type-badge {
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+  color: var(--interactive-accent);
+  font-size: 0.72em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.35;
+  text-transform: lowercase;
+}
 .dta-sync-count {
   flex-shrink: 0;
   min-width: 1.4rem;
@@ -308,6 +336,14 @@ if you want to view the source, please visit the github repository of this plugi
 }
 .dta-sync-footer-btn.mod-warning:hover {
   background: color-mix(in srgb, var(--text-warning) 10%, transparent);
+}
+.dta-sync-footer-btn.mod-success {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--text-success) 55%, transparent);
+  color: var(--text-success);
+}
+.dta-sync-footer-btn.mod-success:hover {
+  background: color-mix(in srgb, var(--text-success) 10%, transparent);
 }
 .deck-to-anki-settings-hint {
   margin-top: 1rem;

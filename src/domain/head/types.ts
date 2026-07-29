@@ -36,13 +36,24 @@ export interface DeckNode {
 export interface ParsedHeadFile {
 	filePath: string;
 	fileName: string;
+	/** Root deck display name (deckName YAML or formatted file name). */
+	deckName: string;
+	/** Active parse mode used for this result. */
 	deckType: DeckType;
-	archived: boolean;
+	/** Card heading level used for this parse. */
+	deckLevel: number;
+	/** Values declared in YAML, if any. */
+	yamlDeckType?: DeckType;
+	yamlDeckName?: string;
+	yamlDeckLevel?: number;
+	/** YAML deckStatus: true = archived, false = learning. */
+	deckStatus: boolean;
 	root: DeckNode;
 	warnings: string[];
 }
 
 export interface ParseHeadFileOptions {
-	defaultDeckType: DeckType;
-	cardHeadingLevel: number;
+	/** Forced parse mode from the sync panel (default head). */
+	deckType: DeckType;
+	deckLevel: number;
 }
