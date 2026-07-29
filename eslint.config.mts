@@ -12,7 +12,9 @@ export default defineConfig(
 		'main.js',
 		'package.json',
 		'package-lock.json',
-		'tsconfig.json',
+		'tmp',
+		'.history',
+		'styles.css',
 	]),
 	{
 		languageOptions: {
