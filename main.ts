@@ -1,10 +1,11 @@
-import { Plugin } from 'obsidian';
+import { addIcon, Plugin } from 'obsidian';
 import { registerCommands } from './src/commands/registerCommands';
 import {
 	DEFAULT_SETTINGS,
 	DeckToAnkiSettingTab,
 	type DeckToAnkiSettings,
 } from './src/settings';
+import { ANKI_ICON_ID, ANKI_ICON_SVG } from './src/ui/ankiIcon';
 import { openSyncPanel } from './src/ui/sync-panel/SyncPanelModal';
 
 export default class DeckToAnkiPlugin extends Plugin {
@@ -13,7 +14,8 @@ export default class DeckToAnkiPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.addRibbonIcon('layers', 'Deck To Anki Sync', () => {
+		addIcon(ANKI_ICON_ID, ANKI_ICON_SVG);
+		this.addRibbonIcon(ANKI_ICON_ID, 'Deck To Anki', () => {
 			openSyncPanel(this);
 		});
 
@@ -21,7 +23,7 @@ export default class DeckToAnkiPlugin extends Plugin {
 		this.addSettingTab(new DeckToAnkiSettingTab(this.app, this));
 	}
 
-	onunload() {}
+	onunload() { }
 
 	async loadSettings() {
 		this.settings = Object.assign(

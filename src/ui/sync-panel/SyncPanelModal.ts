@@ -87,7 +87,7 @@ export class SyncPanelModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass('dta-sync-modal');
-		this.titleEl.setText('Deck To Anki Sync');
+		this.titleEl.setText('Deck To Anki');
 		this.renderChrome();
 		void this.reload();
 	}
@@ -349,9 +349,9 @@ export class SyncPanelModal extends Modal {
 		const warningText =
 			this.forestWarnings.length > 0
 				? this.forestWarnings.slice(0, 5).join('；') +
-					(this.forestWarnings.length > 5
-						? `…（共 ${this.forestWarnings.length} 条）`
-						: '')
+				(this.forestWarnings.length > 5
+					? `…（共 ${this.forestWarnings.length} 条）`
+					: '')
 				: '';
 
 		if (isForest) {
@@ -367,7 +367,7 @@ export class SyncPanelModal extends Modal {
 				: 'YAML 未完整设置';
 			const sessionHint =
 				this.sessionOverride &&
-				this.sessionOverride.deckType !== this.parsed.yamlDeckType
+					this.sessionOverride.deckType !== this.parsed.yamlDeckType
 					? ' · 会话未写入'
 					: '';
 			const focusHint = this.focusChildLabel
