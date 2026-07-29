@@ -10,6 +10,8 @@ import {
 	stripParentDeckNamePrefix,
 } from '../head/formatDefaultDeckName';
 import {
+	ensureDeckFileLink,
+	formatDeckFileLink,
 	parseFrontmatter,
 	upsertDeckYaml,
 } from '../head/frontmatter';
@@ -113,49 +115,51 @@ interface ResolvedChildMode {
 /**
  * Resolve child note deckType:
  * - missing → auto-write YAML deckType: head
- * - file → not allowed for nesting; parse as head (YAML unchanged)
+ * - file → not allowed for nesting; parse as head (YAML type unchanged)
  * - head / basic / list → use as-is
+ * Always ensure deckFile: [[parent]] indexes the file-mode parent.
  */
 async function resolveChildDeckMode(
 	app: App,
 	file: TFile,
 	content: string,
 	fallbackLevel: number,
+	parentFile: TFile,
 ): Promise<ResolvedChildMode> {
 	const meta = parseFrontmatter(content);
+	let next = content;
+	let autoSetHead = false;
+	let forcedFromFile = false;
+	let deckType: Exclude<DeckType, 'file'> = 'head';
 
 	if (!meta.deckType) {
-		const next = upsertDeckYaml(content, {
+		next = upsertDeckYaml(next, {
 			deckType: 'head',
 			deckName: meta.deckName,
 			deckLevel: meta.deckLevel ?? fallbackLevel,
 			deckStatus: meta.deckStatus,
+			deckFile: formatDeckFileLink(parentFile.path),
 		});
-		if (next !== content) {
-			await app.vault.modify(file, next);
-		}
-		return {
-			deckType: 'head',
-			content: next,
-			autoSetHead: true,
-			forcedFromFile: false,
-		};
+		autoSetHead = true;
+		deckType = 'head';
+	} else if (meta.deckType === 'file') {
+		forcedFromFile = true;
+		deckType = 'head';
+		next = ensureDeckFileLink(next, parentFile.path);
+	} else {
+		deckType = meta.deckType;
+		next = ensureDeckFileLink(next, parentFile.path);
 	}
 
-	if (meta.deckType === 'file') {
-		return {
-			deckType: 'head',
-			content,
-			autoSetHead: false,
-			forcedFromFile: true,
-		};
+	if (next !== content) {
+		await app.vault.modify(file, next);
 	}
 
 	return {
-		deckType: meta.deckType,
-		content,
-		autoSetHead: false,
-		forcedFromFile: false,
+		deckType,
+		content: next,
+		autoSetHead,
+		forcedFromFile,
 	};
 }
 
@@ -217,6 +221,11 @@ export async function parseFileMode(
 		const typeOverride = childTypeOverrides?.get(dest.path);
 		let resolved: ResolvedChildMode;
 		if (typeOverride) {
+			const withParent = ensureDeckFileLink(childContent, sourceFile.path);
+			if (withParent !== childContent) {
+				await app.vault.modify(dest, withParent);
+				childContent = withParent;
+			}
 			resolved = {
 				deckType: typeOverride,
 				content: childContent,
@@ -229,6 +238,7 @@ export async function parseFileMode(
 				dest,
 				childContent,
 				childCardHeadingLevel,
+				sourceFile,
 			);
 			childContent = resolved.content;
 		}
@@ -244,7 +254,7 @@ export async function parseFileMode(
 		const flattenSoleH1 = Boolean(soleH1);
 
 		if (resolved.autoSetHead) {
-			warnings.push(`${childName}: 已自动写入 deckType: head`);
+			warnings.push(`${childName}: 已自动写入 deckType: head / deckFile`);
 		}
 		if (resolved.forcedFromFile) {
 			warnings.push(

@@ -10,6 +10,11 @@ export interface FrontmatterMeta {
 	deckLevel?: number;
 	/** true = archived, false = learning/active. */
 	deckStatus: boolean;
+	/**
+	 * Parent file index for nested notes under deckType:file.
+	 * Normalized as `[[basename]]`.
+	 */
+	deckFile?: string;
 	warnings: string[];
 }
 
@@ -35,6 +40,52 @@ function parseBoolean(value: string): boolean | undefined {
 	return undefined;
 }
 
+/** Normalize YAML deckFile value to `[[basename]]` (no surrounding quotes). */
+export function normalizeDeckFileLink(value: string): string | undefined {
+	const trimmed = value.trim().replace(/^['"]|['"]$/g, '');
+	if (!trimmed) {
+		return undefined;
+	}
+	const wiki = trimmed.match(/^\[\[([^\]|#]+)(?:\|[^\]]+)?\]\]$/);
+	const raw = (wiki?.[1] ?? trimmed).trim().replace(/\.md$/i, '');
+	if (!raw) {
+		return undefined;
+	}
+	// Obsidian short wikilink — never wrap with quotes in YAML.
+	return `[[${raw}]]`;
+}
+
+export function formatDeckFileLink(filePathOrName: string): string {
+	const base =
+		filePathOrName.split(/[/\\]/).pop()?.replace(/\.md$/i, '') ??
+		filePathOrName;
+	return `[[${base.trim()}]]`;
+}
+
+/** Raw `deckFile` line value as written in YAML (may include quotes). */
+function readRawDeckFileValue(content: string): string | undefined {
+	const match = content.match(FRONTMATTER_REGEXP);
+	if (!match?.[1]) {
+		return undefined;
+	}
+	for (const rawLine of match[1].split(/\r?\n/)) {
+		const trimmed = rawLine.trim();
+		if (!trimmed || trimmed.startsWith('#')) {
+			continue;
+		}
+		const colon = trimmed.indexOf(':');
+		if (colon <= 0) {
+			continue;
+		}
+		const key = trimmed.slice(0, colon).trim().replace(/^['"]|['"]$/g, '');
+		if (key !== 'deckFile') {
+			continue;
+		}
+		return trimmed.slice(colon + 1).trim();
+	}
+	return undefined;
+}
+
 export function parseFrontmatter(content: string): FrontmatterMeta {
 	const warnings: string[] = [];
 	const match = content.match(FRONTMATTER_REGEXP);
@@ -47,6 +98,7 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 	let deckName: string | undefined;
 	let deckLevel: number | undefined;
 	let deckStatus = false;
+	let deckFile: string | undefined;
 
 	for (const rawLine of body.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -88,10 +140,17 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 			} else if (value) {
 				warnings.push(`无效 deckStatus: ${value}`);
 			}
+		} else if (key === 'deckFile') {
+			const link = normalizeDeckFileLink(value);
+			if (link) {
+				deckFile = link;
+			} else if (value) {
+				warnings.push(`无效 deckFile: ${value}`);
+			}
 		}
 	}
 
-	return { deckType, deckName, deckLevel, deckStatus, warnings };
+	return { deckType, deckName, deckLevel, deckStatus, deckFile, warnings };
 }
 
 export interface UpsertDeckYamlProps {
@@ -101,33 +160,18 @@ export interface UpsertDeckYamlProps {
 	/** Only written for head; omitted/removed otherwise. */
 	deckLevel?: number;
 	deckStatus: boolean;
+	/**
+	 * Parent index for file-mode children. `null` removes the key;
+	 * omit to leave unchanged.
+	 */
+	deckFile?: string | null;
 }
 
-/** Insert or update camelCase YAML deck properties. */
-export function upsertDeckYaml(
+function applyFrontmatterUpdates(
 	content: string,
-	props: UpsertDeckYamlProps,
+	updates: Record<string, string>,
+	removeKeys: Set<string>,
 ): string {
-	const updates: Record<string, string> = {
-		deckType: props.deckType,
-		deckStatus: props.deckStatus ? 'true' : 'false',
-	};
-	const trimmedName = props.deckName?.trim();
-	if (trimmedName) {
-		updates.deckName = trimmedName;
-	}
-	if (props.deckType === 'head' && props.deckLevel !== undefined) {
-		updates.deckLevel = String(props.deckLevel);
-	}
-
-	const removeKeys = new Set<string>([...LEGACY_KEYS]);
-	if (props.deckType !== 'head') {
-		removeKeys.add('deckLevel');
-	}
-	if (!trimmedName) {
-		removeKeys.add('deckName');
-	}
-
 	const match = content.match(FRONTMATTER_REGEXP);
 	if (!match) {
 		const block = Object.entries(updates)
@@ -177,4 +221,60 @@ export function upsertDeckYaml(
 
 	const newFm = nextLines.join('\n');
 	return content.replace(FRONTMATTER_REGEXP, `---\n${newFm}\n---${ending}`);
+}
+
+/** Insert or update camelCase YAML deck properties. */
+export function upsertDeckYaml(
+	content: string,
+	props: UpsertDeckYamlProps,
+): string {
+	const updates: Record<string, string> = {
+		deckType: props.deckType,
+		deckStatus: props.deckStatus ? 'true' : 'false',
+	};
+	const trimmedName = props.deckName?.trim();
+	if (trimmedName) {
+		updates.deckName = trimmedName;
+	}
+	if (props.deckType === 'head' && props.deckLevel !== undefined) {
+		updates.deckLevel = String(props.deckLevel);
+	}
+
+	const removeKeys = new Set<string>([...LEGACY_KEYS]);
+	if (props.deckType !== 'head') {
+		removeKeys.add('deckLevel');
+	}
+	if (!trimmedName) {
+		removeKeys.add('deckName');
+	}
+
+	if (props.deckFile !== undefined) {
+		if (props.deckFile === null || props.deckFile.trim() === '') {
+			removeKeys.add('deckFile');
+		} else {
+			const link =
+				normalizeDeckFileLink(props.deckFile) ??
+				formatDeckFileLink(props.deckFile);
+			updates.deckFile = link;
+		}
+	}
+
+	return applyFrontmatterUpdates(content, updates, removeKeys);
+}
+
+/**
+ * Ensure child note has unquoted `deckFile: [[parent]]` (Obsidian short wikilink).
+ * Rewrites quoted forms like `deckFile: "[[parent]]"`.
+ */
+export function ensureDeckFileLink(
+	content: string,
+	parentFilePathOrName: string,
+): string {
+	const link = formatDeckFileLink(parentFilePathOrName);
+	const raw = readRawDeckFileValue(content);
+	// Exact unquoted short wikilink already present.
+	if (raw === link) {
+		return content;
+	}
+	return applyFrontmatterUpdates(content, { deckFile: link }, new Set());
 }

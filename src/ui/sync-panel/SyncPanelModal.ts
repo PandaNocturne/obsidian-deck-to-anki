@@ -1,9 +1,8 @@
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import type DeckToAnkiPlugin from '../../../main';
-import { parseFileMode } from '../../domain/file/parseFileMode';
-import { parseFrontmatter, upsertDeckYaml } from '../../domain/head/frontmatter';
-import { parseHeadFile } from '../../domain/head/parseHeadFile';
-import { parseListFile } from '../../domain/list/parseListFile';
+import { upsertDeckYaml, parseFrontmatter } from '../../domain/head/frontmatter';
+import { parseNoteFile } from '../../domain/parseNote';
+import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
 import type {
 	CardNode,
 	DeckNode,
@@ -12,16 +11,22 @@ import type {
 } from '../../domain/head/types';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
 import type { FileDeckSettingsValues } from './FileDeckSettingsModal';
-import { SyncPanelState } from './SyncPanelState';
+import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
 
 export class SyncPanelModal extends Modal {
 	private readonly plugin: DeckToAnkiPlugin;
 	private readonly state = new SyncPanelState();
+	/** Current-tab single note parse; null on all/archived forest views. */
 	private parsed: ParsedHeadFile | null = null;
+	/** Active tree root (single note or forest). */
+	private viewRoot: DeckNode | null = null;
+	private forestItems: ParsedHeadFile[] = [];
+	private forestWarnings: string[] = [];
 	private treeHostEl!: HTMLElement;
 	private statusEl!: HTMLElement;
-	private learningTabEl!: HTMLButtonElement;
+	private currentTabEl!: HTMLButtonElement;
+	private allTabEl!: HTMLButtonElement;
 	private archivedTabEl!: HTMLButtonElement;
 	/** Session parse override for the active note (not written to YAML until Save/Update). */
 	private sessionOverride: FileDeckSettingsValues | null = null;
@@ -45,6 +50,8 @@ export class SyncPanelModal extends Modal {
 	onClose(): void {
 		this.contentEl.empty();
 		this.parsed = null;
+		this.viewRoot = null;
+		this.forestItems = [];
 	}
 
 	private renderChrome(): void {
@@ -52,21 +59,26 @@ export class SyncPanelModal extends Modal {
 		contentEl.empty();
 
 		const tabs = contentEl.createDiv({ cls: 'dta-sync-tabs' });
-		this.learningTabEl = tabs.createEl('button', {
+		this.currentTabEl = tabs.createEl('button', {
 			cls: 'dta-sync-tab',
-			text: '学习中',
+			text: '当前卡片',
+		});
+		this.allTabEl = tabs.createEl('button', {
+			cls: 'dta-sync-tab',
+			text: '所有卡片',
 		});
 		this.archivedTabEl = tabs.createEl('button', {
 			cls: 'dta-sync-tab',
-			text: '已归档',
+			text: '归档卡片',
 		});
-		this.learningTabEl.addEventListener('click', () => {
-			this.state.tab = 'learning';
-			this.renderBody();
+		this.currentTabEl.addEventListener('click', () => {
+			void this.switchTab('current');
+		});
+		this.allTabEl.addEventListener('click', () => {
+			void this.switchTab('all');
 		});
 		this.archivedTabEl.addEventListener('click', () => {
-			this.state.tab = 'archived';
-			this.renderBody();
+			void this.switchTab('archived');
 		});
 
 		const meta = contentEl.createDiv({ cls: 'dta-sync-meta' });
@@ -95,7 +107,7 @@ export class SyncPanelModal extends Modal {
 
 		const refreshBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '刷新', title: '重新解析当前文件' },
+			attr: { 'aria-label': '刷新', title: '重新解析' },
 		});
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.addEventListener('click', () => {
@@ -132,31 +144,43 @@ export class SyncPanelModal extends Modal {
 		});
 	}
 
+	private async switchTab(tab: SyncPanelTab): Promise<void> {
+		if (tab === 'current' && !this.getActiveMarkdownFile()) {
+			new Notice('未打开笔记，已切换到「所有卡片」');
+			this.state.tab = 'all';
+		} else {
+			this.state.tab = tab;
+		}
+		await this.reload({ preserveTab: true });
+	}
+
 	private async reload(options?: { preserveTab?: boolean }): Promise<void> {
 		const previousTab = this.state.tab;
-		const file = this.getActiveMarkdownFile();
-		if (!file) {
-			this.parsed = null;
-			this.statusEl.setText('请先打开一个 Markdown 笔记。');
-			this.treeHostEl.empty();
-			this.updateChromeState();
-			return;
+		if (options?.preserveTab) {
+			this.state.tab = previousTab;
 		}
 
-		const content = await this.app.vault.read(file);
-		const meta = parseFrontmatter(content);
-		const deckType =
-			this.sessionOverride?.deckType ??
-			meta.deckType ??
-			this.plugin.settings.defaultDeckType ??
-			'head';
-		const deckLevel =
-			this.sessionOverride?.deckLevel ??
-			meta.deckLevel ??
-			this.plugin.settings.cardHeadingLevel ??
-			4;
-		const childLevel = this.plugin.settings.cardHeadingLevel || 4;
+		const file = this.getActiveMarkdownFile();
+		if (this.state.tab === 'current' && !file) {
+			this.state.tab = 'all';
+		}
 
+		this.updateChromeState();
+		this.statusEl.setText('解析中…');
+
+		if (this.state.tab === 'current') {
+			await this.reloadCurrent(file!);
+		} else {
+			await this.reloadForest(
+				this.state.tab === 'archived' ? 'archived' : 'active',
+			);
+		}
+
+		this.renderBody();
+	}
+
+	private async reloadCurrent(file: TFile): Promise<void> {
+		const content = await this.app.vault.read(file);
 		const childTypeOverrides = new Map<
 			string,
 			Exclude<DeckType, 'file'>
@@ -167,98 +191,116 @@ export class SyncPanelModal extends Modal {
 			}
 		}
 
-		if (deckType === 'file') {
-			this.parsed = await parseFileMode({
-				app: this.app,
-				sourceFile: file,
-				content,
-				options: { deckType: 'file', deckLevel },
-				childCardHeadingLevel: childLevel,
-				childTypeOverrides,
-			});
-		} else if (deckType === 'list') {
-			this.parsed = parseListFile(file.path, content, {
-				deckType: 'list',
-				deckLevel,
-			});
-		} else if (deckType === 'head') {
-			this.parsed = parseHeadFile(file.path, content, {
-				deckType: 'head',
-				deckLevel,
-			});
-		} else {
-			this.parsed = parseHeadFile(file.path, content, {
-				deckType,
-				deckLevel,
-			});
+		const parsed = await parseNoteFile(this.app, file, content, {
+			deckType: this.sessionOverride?.deckType,
+			deckLevel: this.sessionOverride?.deckLevel,
+			fallbackDeckType: this.plugin.settings.defaultDeckType || 'head',
+			fallbackDeckLevel: this.plugin.settings.cardHeadingLevel || 4,
+			childCardHeadingLevel: this.plugin.settings.cardHeadingLevel || 4,
+			childTypeOverrides,
+		});
+
+		if (!parsed) {
+			this.parsed = null;
+			this.viewRoot = null;
+			this.forestItems = [];
+			return;
 		}
 
-		if (this.sessionOverride && this.parsed) {
-			this.parsed = {
-				...this.parsed,
-				deckStatus: this.sessionOverride.deckStatus,
-			};
-		}
-
-		this.state.resetFromParsed(this.parsed);
 		if (this.sessionOverride) {
-			this.state.parseType = this.sessionOverride.deckType;
-			this.state.cardLevel = this.sessionOverride.deckLevel;
+			parsed.deckStatus = this.sessionOverride.deckStatus;
 		}
-		if (options?.preserveTab) {
-			this.state.tab = previousTab;
-		} else if (this.sessionOverride) {
-			this.state.tab = this.sessionOverride.deckStatus
-				? 'archived'
-				: 'learning';
-		}
-		this.renderBody();
+
+		this.parsed = parsed;
+		this.viewRoot = parsed.root;
+		this.forestItems = [parsed];
+		this.forestWarnings = parsed.warnings;
+		this.state.resetFromTree(parsed.root, {
+			parseType: this.sessionOverride?.deckType ?? parsed.deckType,
+			cardLevel: this.sessionOverride?.deckLevel ?? parsed.deckLevel,
+		});
+	}
+
+	private async reloadForest(mode: 'active' | 'archived'): Promise<void> {
+		this.sessionOverride = null;
+		const result = await parseVaultDeckForest(this.app, {
+			mode,
+			includeFolders: this.plugin.settings.includeFolders ?? [],
+			fallbackDeckLevel: this.plugin.settings.cardHeadingLevel || 4,
+			childCardHeadingLevel: this.plugin.settings.cardHeadingLevel || 4,
+		});
+
+		this.parsed = null;
+		this.viewRoot = result.root;
+		this.forestItems = result.items;
+		this.forestWarnings = result.warnings;
+		this.state.resetFromTree(result.root, {
+			parseType: this.plugin.settings.defaultDeckType || 'head',
+			cardLevel: this.plugin.settings.cardHeadingLevel || 4,
+		});
 	}
 
 	private renderBody(): void {
 		this.updateChromeState();
 		this.treeHostEl.empty();
 
-		if (!this.parsed) {
-			this.statusEl.setText('请先打开一个 Markdown 笔记。');
-			return;
-		}
-
-		const showArchived = this.state.tab === 'archived';
-		if (this.parsed.deckStatus !== showArchived) {
+		if (!this.viewRoot) {
 			this.statusEl.setText(
-				showArchived
-					? '当前文件 deckStatus 不为 true。'
-					: '当前文件 deckStatus 为 true，请切换到「已归档」查看。',
+				this.state.tab === 'current'
+					? '请先打开一个 Markdown 笔记。'
+					: '没有可显示的牌组。',
 			);
 			return;
 		}
 
-		const yamlHint = this.parsed.yamlDeckType
-			? `YAML ${this.parsed.yamlDeckType}`
-			: 'YAML 未完整设置';
-		const sessionHint =
-			this.sessionOverride &&
-			this.sessionOverride.deckType !== this.parsed.yamlDeckType
-				? ' · 会话未写入'
-				: '';
-		const levelHint =
-			this.parsed.deckType === 'head'
-				? ` · H${this.parsed.deckLevel}`
-				: '';
+		const isForest = this.state.tab !== 'current';
 		const warningText =
-			this.parsed.warnings.length > 0
-				? this.parsed.warnings.join('；')
+			this.forestWarnings.length > 0
+				? this.forestWarnings.slice(0, 5).join('；') +
+					(this.forestWarnings.length > 5
+						? `…（共 ${this.forestWarnings.length} 条）`
+						: '')
 				: '';
-		const summary = `${this.parsed.deckName} · ${this.parsed.root.cardCount} 张 · ${this.parsed.deckType}${levelHint} · ${yamlHint}${sessionHint}`;
-		this.statusEl.setText(
-			warningText ? `${summary} — ${warningText}` : summary,
-		);
 
-		if (this.parsed.deckType === 'basic') {
+		if (isForest) {
+			const label =
+				this.state.tab === 'archived' ? '归档卡片' : '所有卡片';
+			const summary = `${label} · ${this.forestItems.length} 个笔记 · ${this.viewRoot.cardCount} 张（仅含 YAML deckType）`;
+			this.statusEl.setText(
+				warningText ? `${summary} — ${warningText}` : summary,
+			);
+		} else if (this.parsed) {
+			const yamlHint = this.parsed.yamlDeckType
+				? `YAML ${this.parsed.yamlDeckType}`
+				: 'YAML 未完整设置';
+			const sessionHint =
+				this.sessionOverride &&
+				this.sessionOverride.deckType !== this.parsed.yamlDeckType
+					? ' · 会话未写入'
+					: '';
+			const levelHint =
+				this.parsed.deckType === 'head'
+					? ` · H${this.parsed.deckLevel}`
+					: '';
+			const summary = `${this.parsed.deckName} · ${this.parsed.root.cardCount} 张 · ${this.parsed.deckType}${levelHint} · ${yamlHint}${sessionHint}`;
+			this.statusEl.setText(
+				warningText ? `${summary} — ${warningText}` : summary,
+			);
+		}
+
+		const treeOptions = {
+			parseType:
+				this.parsed?.deckType ??
+				this.state.parseType ??
+				('head' as DeckType),
+			showRootMeta: !isForest,
+			skipRootRow: isForest,
+		};
+
+		if (!isForest && this.parsed?.deckType === 'basic') {
 			renderSyncPanelTree(
 				this.treeHostEl,
-				this.parsed.root,
+				this.viewRoot,
 				this.state,
 				{
 					onToggleCollapse: () => undefined,
@@ -268,7 +310,7 @@ export class SyncPanelModal extends Modal {
 						void this.openDeckSettings(deck);
 					},
 				},
-				{ parseType: this.parsed.deckType },
+				treeOptions,
 			);
 			this.treeHostEl.createDiv({
 				cls: 'dta-sync-empty',
@@ -278,12 +320,12 @@ export class SyncPanelModal extends Modal {
 		}
 
 		if (
-			this.parsed.root.cardCount === 0 &&
-			this.parsed.root.children.length === 0
+			this.viewRoot.cardCount === 0 &&
+			this.viewRoot.children.length === 0
 		) {
 			renderSyncPanelTree(
 				this.treeHostEl,
-				this.parsed.root,
+				this.viewRoot,
 				this.state,
 				{
 					onToggleCollapse: () => undefined,
@@ -293,14 +335,17 @@ export class SyncPanelModal extends Modal {
 						void this.openDeckSettings(deck);
 					},
 				},
-				{ parseType: this.parsed.deckType },
+				treeOptions,
 			);
 			this.treeHostEl.createDiv({
 				cls: 'dta-sync-empty',
-				text:
-					this.parsed.deckType === 'file'
+				text: isForest
+					? this.state.tab === 'archived'
+						? '未找到带 deckType 且 deckStatus 为 true 的笔记。'
+						: '未找到带 deckType 的笔记（已归档的在「归档卡片」）。'
+					: this.parsed?.deckType === 'file'
 						? '未找到关联笔记或子笔记中无卡片。在正文添加 [[笔记]] 链接。'
-						: this.parsed.deckType === 'list'
+						: this.parsed?.deckType === 'list'
 							? '未识别到一级列表项。标题用于分组，- / * / 1. 一级列表为卡片，次级列表为反面。'
 							: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
 			});
@@ -309,7 +354,7 @@ export class SyncPanelModal extends Modal {
 
 		renderSyncPanelTree(
 			this.treeHostEl,
-			this.parsed.root,
+			this.viewRoot,
 			this.state,
 			{
 				onToggleCollapse: (deckId) => {
@@ -334,25 +379,58 @@ export class SyncPanelModal extends Modal {
 					void this.openCard(card);
 				},
 			},
-			{ parseType: this.parsed.deckType },
+			treeOptions,
 		);
 	}
 
 	private async openCard(card: CardNode): Promise<void> {
-		if (!this.parsed) {
+		const filePath =
+			card.sourceFilePath ??
+			this.parsed?.filePath ??
+			this.forestItems.find((item) =>
+				card.id.includes(item.filePath),
+			)?.filePath;
+		if (!filePath) {
+			new Notice('找不到卡片对应笔记');
 			return;
 		}
 
-		const filePath = card.sourceFilePath ?? this.parsed.filePath;
-		const heading =
-			card.headingLevel > 0 ? card.front.trim() : '';
+		const heading = card.headingLevel > 0 ? card.front.trim() : '';
 		const linktext = heading ? `${filePath}#${heading}` : filePath;
 		await this.app.workspace.openLinkText(linktext, '', false);
 	}
 
+	private findParsedForDeck(deck: DeckNode): ParsedHeadFile | null {
+		if (this.parsed && deck.id === this.parsed.root.id) {
+			return this.parsed;
+		}
+		const byPath = deck.sourceFilePath
+			? this.forestItems.find((item) => item.filePath === deck.sourceFilePath)
+			: undefined;
+		if (byPath) {
+			return byPath;
+		}
+		return (
+			this.forestItems.find((item) => item.root.id === deck.id) ?? null
+		);
+	}
+
 	private async openDeckSettings(deck: DeckNode): Promise<void> {
-		const isRoot = deck.id === this.parsed?.root.id;
-		const filePath = deck.sourceFilePath ?? this.parsed?.filePath;
+		const noteParsed = this.findParsedForDeck(deck);
+		const isCurrentRoot =
+			this.state.tab === 'current' &&
+			this.parsed != null &&
+			deck.id === this.parsed.root.id;
+		const isForestNoteRoot = this.forestItems.some(
+			(item) => item.root.id === deck.id,
+		);
+
+		if (!deck.deckType && !isCurrentRoot) {
+			new Notice('该节点不是笔记级牌组，无法设置 YAML');
+			return;
+		}
+
+		const filePath = deck.sourceFilePath ?? noteParsed?.filePath;
 		const file = filePath
 			? this.app.vault.getAbstractFileByPath(filePath)
 			: this.getActiveMarkdownFile();
@@ -362,13 +440,12 @@ export class SyncPanelModal extends Modal {
 		}
 
 		const fallbackLevel = this.plugin.settings.cardHeadingLevel || 4;
-		let deckType: DeckType =
-			deck.deckType ?? this.state.parseType ?? 'head';
+		let deckType: DeckType = deck.deckType ?? this.state.parseType ?? 'head';
 		let deckName = '';
 		let deckLevel = fallbackLevel;
-		let deckStatus = this.state.tab === 'archived';
+		let deckStatus = noteParsed?.deckStatus ?? false;
 
-		if (isRoot && this.parsed) {
+		if (isCurrentRoot && this.parsed) {
 			if (this.sessionOverride) {
 				deckType = this.sessionOverride.deckType;
 				deckName = this.sessionOverride.deckName;
@@ -394,18 +471,23 @@ export class SyncPanelModal extends Modal {
 				deckName = meta.deckName ?? '';
 				deckLevel = meta.deckLevel ?? fallbackLevel;
 				deckStatus = meta.deckStatus;
-				if (deckType === 'file') {
+				if (
+					deckType === 'file' &&
+					!isForestNoteRoot &&
+					!isCurrentRoot
+				) {
 					deckType = 'head';
 				}
 			}
 		}
 
+		const allowFileType = isCurrentRoot || isForestNoteRoot;
 		openFileDeckSettings(
 			this.plugin,
 			file,
 			{ deckType, deckName, deckLevel, deckStatus },
 			async (values, result) => {
-				if (isRoot) {
+				if (isCurrentRoot) {
 					if (result.persisted) {
 						this.sessionOverride = null;
 					} else {
@@ -425,11 +507,18 @@ export class SyncPanelModal extends Modal {
 
 				await this.reload({ preserveTab: true });
 			},
-			isRoot ? undefined : { allowedDeckTypes: ['head', 'basic', 'list'] },
+			allowFileType
+				? undefined
+				: { allowedDeckTypes: ['head', 'basic', 'list'] },
 		);
 	}
 
 	private async handleUpdate(): Promise<void> {
+		if (this.state.tab !== 'current') {
+			new Notice('请在「当前卡片」中更新打开笔记的 YAML');
+			return;
+		}
+
 		const file = this.getActiveMarkdownFile();
 		if (!file) {
 			new Notice('请先打开一个 Markdown 笔记');
@@ -439,10 +528,14 @@ export class SyncPanelModal extends Modal {
 		const content = await this.app.vault.read(file);
 		const next = upsertDeckYaml(content, {
 			deckType: this.state.parseType,
-			deckName: this.parsed?.yamlDeckName,
+			deckName:
+				this.sessionOverride?.deckName ?? this.parsed?.yamlDeckName,
 			deckLevel:
 				this.state.parseType === 'head' ? this.state.cardLevel : undefined,
-			deckStatus: this.state.tab === 'archived',
+			deckStatus:
+				this.sessionOverride?.deckStatus ??
+				this.parsed?.deckStatus ??
+				false,
 		});
 
 		if (next === content) {
@@ -457,10 +550,11 @@ export class SyncPanelModal extends Modal {
 	}
 
 	private updateChromeState(): void {
-		this.learningTabEl.toggleClass(
+		this.currentTabEl.toggleClass(
 			'is-active',
-			this.state.tab === 'learning',
+			this.state.tab === 'current',
 		);
+		this.allTabEl.toggleClass('is-active', this.state.tab === 'all');
 		this.archivedTabEl.toggleClass(
 			'is-active',
 			this.state.tab === 'archived',

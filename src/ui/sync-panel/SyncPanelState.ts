@@ -5,27 +5,38 @@ import type {
 	ParsedHeadFile,
 } from '../../domain/head/types';
 
-export type SyncPanelTab = 'learning' | 'archived';
+export type SyncPanelTab = 'current' | 'all' | 'archived';
 
 export class SyncPanelState {
 	readonly selected = new Set<string>();
 	readonly collapsed = new Set<string>();
-	tab: SyncPanelTab = 'learning';
+	tab: SyncPanelTab = 'current';
 	/** Panel parse mode; defaults to head. */
 	parseType: DeckType = 'head';
 	/** Active card heading level for parse. */
 	cardLevel = 4;
 	private root: DeckNode | null = null;
 
-	resetFromParsed(parsed: ParsedHeadFile): void {
-		this.root = parsed.root;
-		this.parseType = parsed.deckType;
-		this.cardLevel = parsed.deckLevel;
+	resetFromTree(root: DeckNode, options?: { parseType?: DeckType; cardLevel?: number }): void {
+		this.root = root;
+		if (options?.parseType) {
+			this.parseType = options.parseType;
+		}
+		if (options?.cardLevel !== undefined) {
+			this.cardLevel = options.cardLevel;
+		}
 		this.selected.clear();
 		this.collapsed.clear();
-		this.selectAll(parsed.root);
-		this.collapseAllExceptRoot(parsed.root);
-		this.tab = parsed.deckStatus ? 'archived' : 'learning';
+		this.selectAll(root);
+		this.collapseAllExceptRoot(root);
+	}
+
+	/** @deprecated Prefer resetFromTree for multi-file views. */
+	resetFromParsed(parsed: ParsedHeadFile): void {
+		this.resetFromTree(parsed.root, {
+			parseType: parsed.deckType,
+			cardLevel: parsed.deckLevel,
+		});
 	}
 
 	private selectAll(node: DeckNode | CardNode): void {

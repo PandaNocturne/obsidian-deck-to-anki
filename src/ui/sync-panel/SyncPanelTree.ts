@@ -14,6 +14,13 @@ export interface SyncPanelTreeHandlers {
 export interface SyncPanelTreeOptions {
 	/** Fallback parse type badge when a deck has no deckType. */
 	parseType: DeckType;
+	/** When false, root row omits type badge / settings (forest views). Default true. */
+	showRootMeta?: boolean;
+	/**
+	 * Forest views: do not render the synthetic root row (e.g. 「所有卡片」);
+	 * only its deck children appear at the first level. Cards at that level are skipped.
+	 */
+	skipRootRow?: boolean;
 }
 
 export function renderSyncPanelTree(
@@ -25,6 +32,18 @@ export function renderSyncPanelTree(
 ): void {
 	container.empty();
 	const list = container.createDiv({ cls: 'dta-sync-tree' });
+
+	if (options.skipRootRow) {
+		for (const child of root.children) {
+			if (child.kind !== 'deck') {
+				// Nested cards must not appear at the first directory level.
+				continue;
+			}
+			renderDeck(list, child, state, handlers, options, 0, null);
+		}
+		return;
+	}
+
 	renderDeck(list, root, state, handlers, options, 0, null);
 }
 
@@ -45,7 +64,9 @@ function renderDeck(
 	const hasChildren = deck.children.length > 0;
 	const collapsed = state.isCollapsed(deck.id);
 	const isRoot = depth === 0;
-	const badgeType = deck.deckType ?? (isRoot ? options.parseType : undefined);
+	const showRootMeta = options.showRootMeta !== false;
+	const badgeType =
+		deck.deckType ?? (isRoot && showRootMeta ? options.parseType : undefined);
 	const showSettings = Boolean(badgeType && handlers.onDeckSettings);
 
 	if (hasChildren) {

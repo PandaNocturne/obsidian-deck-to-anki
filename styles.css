@@ -37,7 +37,7 @@ if you want to view the source, please visit the github repository of this plugi
 }
 .dta-sync-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 0.2rem;
   padding: 0.2rem;
   border-radius: 10px;
