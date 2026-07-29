@@ -19,6 +19,8 @@ export interface CardNode {
 	deckPath: string;
 	noteId?: number;
 	idMarker?: IdMarkerInfo;
+	/** Obsidian block id (`^xxx`) for list cards; required to jump. */
+	blockId?: string;
 	/** Source note path (file mode child notes). */
 	sourceFilePath?: string;
 }

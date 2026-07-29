@@ -2,11 +2,19 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
 import type { DeckType } from './domain/head/types';
 
+/** Sync tree deck lead icons. */
+export type DeckTreeIconMode = 'unified' | 'byType';
+
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
 	cardHeadingLevel: number;
 	includeFolders: string[];
 	requireDeckTag: boolean;
+	/**
+	 * unified: all decks use circle +/- (collapsed +, expanded −).
+	 * byType: file / heading / list icons; fold state by color.
+	 */
+	deckTreeIconMode: DeckTreeIconMode;
 }
 
 export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
@@ -14,6 +22,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	cardHeadingLevel: 4,
 	includeFolders: [],
 	requireDeckTag: true,
+	deckTreeIconMode: 'unified',
 };
 
 export class DeckToAnkiSettingTab extends PluginSettingTab {
@@ -62,6 +71,23 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+
+		new Setting(containerEl)
+			.setName('Sync tree deck icons')
+			.setDesc(
+				'Top-level decks always use layers. Nested: Unified uses circle +/−; By type uses file / heading / list (fold by color).',
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('unified', 'Unified (+/−)')
+					.addOption('byType', 'By file type')
+					.setValue(this.plugin.settings.deckTreeIconMode)
+					.onChange(async (value) => {
+						this.plugin.settings.deckTreeIconMode =
+							value as DeckTreeIconMode;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',

@@ -1,5 +1,6 @@
 import { setIcon } from 'obsidian';
 import type { CardNode, DeckNode, DeckType } from '../../domain/head/types';
+import type { DeckTreeIconMode } from '../../settings';
 import type { SyncPanelState } from './SyncPanelState';
 
 export interface SyncPanelTreeHandlers {
@@ -23,6 +24,8 @@ export interface SyncPanelTreeOptions {
 	 * only its deck children appear at the first level. Cards at that level are skipped.
 	 */
 	skipRootRow?: boolean;
+	/** Deck lead icon style from plugin settings. Default unified. */
+	iconMode?: DeckTreeIconMode;
 }
 
 export function renderSyncPanelTree(
@@ -49,6 +52,54 @@ export function renderSyncPanelTree(
 	renderDeck(list, root, state, handlers, options, 0, null);
 }
 
+/**
+ * L1 decks always use layers (fold state by color).
+ * Nested unified: circle +/−; nested byType: file / heading / list.
+ */
+function resolveDeckLeadIcon(
+	deck: DeckNode,
+	depth: number,
+	hasChildren: boolean,
+	collapsed: boolean,
+	iconMode: DeckTreeIconMode,
+): { icon: string; foldable: boolean; useFoldColor: boolean } {
+	if (depth === 0) {
+		return {
+			icon: 'layers',
+			foldable: hasChildren,
+			useFoldColor: true,
+		};
+	}
+
+	if (iconMode === 'unified') {
+		return {
+			icon: hasChildren
+				? collapsed
+					? 'plus-circle'
+					: 'minus-circle'
+				: 'minus-circle',
+			foldable: hasChildren,
+			useFoldColor: false,
+		};
+	}
+
+	if (deck.deckType === 'list') {
+		return { icon: 'list', foldable: hasChildren, useFoldColor: true };
+	}
+	if (
+		deck.deckType === 'file' ||
+		deck.id.startsWith('deck:file:') ||
+		deck.deckType === 'head' ||
+		deck.deckType === 'basic'
+	) {
+		return { icon: 'file-text', foldable: hasChildren, useFoldColor: true };
+	}
+	if (deck.headingLevel > 0) {
+		return { icon: 'heading', foldable: hasChildren, useFoldColor: true };
+	}
+	return { icon: 'folder', foldable: hasChildren, useFoldColor: true };
+}
+
 function renderDeck(
 	parent: HTMLElement,
 	deck: DeckNode,
@@ -70,6 +121,14 @@ function renderDeck(
 	const badgeType =
 		deck.deckType ?? (isRoot && showRootMeta ? options.parseType : undefined);
 	const showSettings = Boolean(badgeType && handlers.onDeckSettings);
+	const iconMode = options.iconMode ?? 'unified';
+	const lead = resolveDeckLeadIcon(
+		deck,
+		depth,
+		hasChildren,
+		collapsed,
+		iconMode,
+	);
 
 	const toggleCollapse = (evt: MouseEvent): void => {
 		if (!hasChildren) {
@@ -79,16 +138,18 @@ function renderDeck(
 		handlers.onToggleCollapse(deck.id);
 	};
 
-	// Fold/expand: blank row area or twisty only (not title / actions).
+	const isInteractiveTarget = (target: HTMLElement | null): boolean =>
+		Boolean(
+			target?.closest(
+				'.dta-sync-name, .dta-sync-action, .dta-sync-check, input, button, .dta-sync-type-badge, .dta-sync-count',
+			),
+		);
+
+	// Blank row / icon → fold; title click does not.
 	if (hasChildren) {
 		row.addClass('is-clickable');
 		row.addEventListener('click', (evt) => {
-			const target = evt.target as HTMLElement | null;
-			if (
-				target?.closest(
-					'.dta-sync-name, .dta-sync-action, .dta-sync-check, input, button, .dta-sync-type-badge, .dta-sync-count',
-				)
-			) {
+			if (isInteractiveTarget(evt.target as HTMLElement | null)) {
 				return;
 			}
 			handlers.onToggleCollapse(deck.id);
@@ -98,22 +159,28 @@ function renderDeck(
 	const twisty = row.createSpan({
 		cls: 'dta-sync-twisty',
 		attr: {
-			title: hasChildren
+			title: lead.foldable
 				? collapsed
 					? '展开牌组'
 					: '折叠牌组'
 				: '',
 		},
 	});
-	if (hasChildren) {
-		setIcon(twisty, collapsed ? 'plus-circle' : 'minus-circle');
-		twisty.addEventListener('click', toggleCollapse);
-	} else {
+	setIcon(twisty, lead.icon);
+	if (!hasChildren) {
 		twisty.addClass('is-empty');
-		setIcon(twisty, 'plus-circle');
+	} else {
+		if (lead.useFoldColor) {
+			twisty.addClass(collapsed ? 'is-collapsed' : 'is-expanded');
+		} else {
+			twisty.addClass('is-unified');
+		}
+		twisty.addEventListener('click', toggleCollapse);
 	}
 
-	const nameEl = row.createSpan({
+	// Title text only (no flex grow); remaining gap is blank → fold.
+	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
+	const nameEl = nameSlot.createSpan({
 		cls: 'dta-sync-name',
 		text: formatDeckLabel(deck.name, depth, siblingIndex),
 	});
@@ -213,15 +280,25 @@ function renderCard(
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
 ): void {
+	const isListCard = card.headingLevel === 0;
+	const canJump = !isListCard || Boolean(card.blockId);
+
 	const row = parent.createDiv({
 		cls: 'dta-sync-row dta-sync-row--card is-clickable',
-		// attr: { title: 'Double-click to open in Obsidian' },
 	});
-
+	row.setAttribute(
+		'title',
+		canJump
+			? '双击打开'
+			: '列表项无块 ID（^id），解析可用但无法跳转',
+	);
+	// Cards have no fold — dblclick anywhere (except controls) opens.
 	row.addEventListener('dblclick', (evt) => {
 		const target = evt.target as HTMLElement | null;
 		if (
-			target?.closest('input, button, .dta-sync-action, .dta-sync-check')
+			target?.closest(
+				'input, button, .dta-sync-action, .dta-sync-check',
+			)
 		) {
 			return;
 		}
@@ -229,14 +306,20 @@ function renderCard(
 	});
 
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
-	setIcon(icon, 'sticky-note');
+	setIcon(icon, isListCard ? 'list' : 'sticky-note');
 
-	row.createSpan({
+	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
+	nameSlot.createSpan({
 		cls: 'dta-sync-name',
 		text: card.front,
 	});
 
-	if (card.noteId !== undefined) {
+	if (card.blockId) {
+		row.createSpan({
+			cls: 'dta-sync-id',
+			text: `^${card.blockId}`,
+		});
+	} else if (card.noteId !== undefined) {
 		row.createSpan({
 			cls: 'dta-sync-id',
 			text: `ID ${card.noteId}`,

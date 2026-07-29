@@ -390,6 +390,7 @@ export class SyncPanelModal extends Modal {
 				('head' as DeckType),
 			showRootMeta: !isForest,
 			skipRootRow: isForest,
+			iconMode: this.plugin.settings.deckTreeIconMode ?? 'unified',
 		};
 
 		if (!isForest && this.parsed?.deckType === 'basic') {
@@ -499,7 +500,21 @@ export class SyncPanelModal extends Modal {
 			return;
 		}
 
-		const heading = card.headingLevel > 0 ? card.front.trim() : '';
+		// List cards jump via Obsidian block id only.
+		if (card.headingLevel === 0) {
+			if (!card.blockId) {
+				new Notice('列表项无块 ID（^id），无法跳转（仅可解析）');
+				return;
+			}
+			await this.app.workspace.openLinkText(
+				`${filePath}#^${card.blockId}`,
+				'',
+				false,
+			);
+			return;
+		}
+
+		const heading = card.front.trim();
 		const linktext = heading ? `${filePath}#${heading}` : filePath;
 		await this.app.workspace.openLinkText(linktext, '', false);
 	}

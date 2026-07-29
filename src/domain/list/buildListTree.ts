@@ -7,6 +7,19 @@ import type { CardNode, DeckNode } from '../head/types';
 
 const LIST_ITEM_REGEXP = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
+/** Obsidian block id at end of a line: ^abc-123 */
+const BLOCK_ID_REGEXP = /\s*\^([a-zA-Z0-9-]+)\s*$/;
+
+function stripBlockId(text: string): { text: string; blockId?: string } {
+	const match = text.match(BLOCK_ID_REGEXP);
+	if (!match?.[1] || match.index === undefined) {
+		return { text: text.trim() };
+	}
+	return {
+		text: text.slice(0, match.index).trim(),
+		blockId: match[1],
+	};
+}
 
 function expandIndent(prefix: string): number {
 	let n = 0;
@@ -130,13 +143,15 @@ export function buildListTree(options: BuildListTreeOptions): {
 			return;
 		}
 
-		const front = cardFront.trim();
-		if (!front) {
+		const frontRaw = cardFront.trim();
+		if (!frontRaw) {
 			cardFrontLine = -1;
 			backLines = [];
 			backStart = -1;
 			return;
 		}
+
+		const { text: front, blockId } = stripBlockId(frontRaw);
 
 		const regionStart = backStart >= 0 ? backStart : cardFrontLine + 1;
 		const idMarker = findIdMarkerInLines(
@@ -168,6 +183,7 @@ export function buildListTree(options: BuildListTreeOptions): {
 			deckPath: parent.deckPath,
 			noteId: idMarker?.noteId,
 			idMarker: idMarker ?? undefined,
+			blockId,
 			sourceFilePath: filePath,
 		};
 		parent.children.push(card);

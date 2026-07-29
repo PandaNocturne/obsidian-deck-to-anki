@@ -171,9 +171,6 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-row[data-depth='0'] .dta-sync-name {
   font-weight: 600;
 }
-.dta-sync-row[data-depth='0'] .dta-sync-twisty {
-  color: var(--interactive-accent);
-}
 .dta-sync-row--deck {
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
@@ -194,10 +191,20 @@ if you want to view the source, please visit the github repository of this plugi
   flex-shrink: 0;
   color: var(--text-muted);
   transition: color 0.12s ease;
+  /* Fold state = color only: collapsed highlighted, expanded muted. */
 }
 .dta-sync-twisty svg {
   width: 1.05rem;
   height: 1.05rem;
+}
+.dta-sync-twisty.is-collapsed {
+  color: var(--interactive-accent);
+}
+.dta-sync-twisty.is-expanded {
+  color: var(--text-faint);
+}
+.dta-sync-twisty.is-unified {
+  color: var(--text-muted);
 }
 .dta-sync-twisty.is-empty {
   opacity: 0.3;
@@ -205,15 +212,24 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-twisty.is-leaf {
   visibility: hidden;
 }
-.dta-sync-name {
+.dta-sync-name-slot {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+}
+.dta-sync-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-normal);
   font-size: 0.94em;
   letter-spacing: -0.01em;
+  cursor: default;
 }
 .dta-sync-row--card .dta-sync-name {
   color: var(--text-muted);
