@@ -5,7 +5,6 @@ import type { SyncPanelState } from './SyncPanelState';
 export interface SyncPanelTreeHandlers {
 	onToggleCollapse: (deckId: string) => void;
 	onToggleSelect: (node: DeckNode | CardNode, selected: boolean) => void;
-	onLocate: (lineStart: number) => void;
 	onSyncStub: (node: DeckNode | CardNode) => void;
 }
 
@@ -17,7 +16,7 @@ export function renderSyncPanelTree(
 ): void {
 	container.empty();
 	const list = container.createDiv({ cls: 'dta-sync-tree' });
-	renderDeck(list, root, state, handlers, 0);
+	renderDeck(list, root, state, handlers, 0, null);
 }
 
 function renderDeck(
@@ -26,39 +25,44 @@ function renderDeck(
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
 	depth: number,
+	siblingIndex: number | null,
 ): void {
 	const row = parent.createDiv({
 		cls: 'dta-sync-row dta-sync-row--deck',
 		attr: { 'data-depth': String(depth) },
 	});
-	row.style.setProperty('--dta-depth', String(depth));
 
 	const hasChildren = deck.children.length > 0;
 	const collapsed = state.isCollapsed(deck.id);
 
-	const twisty = row.createSpan({ cls: 'dta-sync-twisty' });
 	if (hasChildren) {
-		setIcon(twisty, collapsed ? 'chevron-right' : 'chevron-down');
-		twisty.addEventListener('click', (evt) => {
-			evt.stopPropagation();
+		row.addClass('is-clickable');
+		row.addEventListener('click', () => {
 			handlers.onToggleCollapse(deck.id);
 		});
-	} else {
-		twisty.addClass('is-empty');
 	}
 
-	const checkbox = row.createEl('input', {
-		type: 'checkbox',
-		cls: 'dta-sync-check',
+	const twisty = row.createSpan({
+		cls: 'dta-sync-twisty',
+		attr: {
+			title: hasChildren
+				? collapsed
+					? '展开牌组'
+					: '折叠牌组'
+				: '',
+		},
 	});
-	checkbox.checked = state.isSelected(deck.id);
-	checkbox.addEventListener('change', () => {
-		handlers.onToggleSelect(deck, checkbox.checked);
-	});
+	if (hasChildren) {
+		setIcon(twisty, collapsed ? 'plus-circle' : 'minus-circle');
+	} else {
+		twisty.addClass('is-empty');
+		setIcon(twisty, 'plus-circle');
+	}
 
+	const label = formatDeckLabel(deck.name, depth, siblingIndex);
 	row.createSpan({
 		cls: 'dta-sync-name',
-		text: deck.name,
+		text: label,
 	});
 
 	row.createSpan({
@@ -66,22 +70,7 @@ function renderDeck(
 		text: String(deck.cardCount),
 	});
 
-	const actions = row.createDiv({ cls: 'dta-sync-actions' });
-
-	const locateBtn = actions.createEl('button', {
-		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '定位到标题', title: '定位到标题' },
-	});
-	setIcon(locateBtn, 'file-text');
-	locateBtn.disabled = deck.lineStart < 0;
-	locateBtn.addEventListener('click', (evt) => {
-		evt.stopPropagation();
-		if (deck.lineStart >= 0) {
-			handlers.onLocate(deck.lineStart);
-		}
-	});
-
-	const syncBtn = actions.createEl('button', {
+	const syncBtn = row.createEl('button', {
 		cls: 'dta-sync-action clickable-icon',
 		attr: { 'aria-label': '同步牌组', title: '同步牌组（尚未实现）' },
 	});
@@ -91,16 +80,37 @@ function renderDeck(
 		handlers.onSyncStub(deck);
 	});
 
+	const checkbox = row.createEl('input', {
+		type: 'checkbox',
+		cls: 'dta-sync-check',
+	});
+	checkbox.checked = state.isSelected(deck.id);
+	checkbox.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+	});
+	checkbox.addEventListener('change', () => {
+		handlers.onToggleSelect(deck, checkbox.checked);
+	});
+
 	if (!hasChildren || collapsed) {
 		return;
 	}
 
 	const childrenEl = parent.createDiv({ cls: 'dta-sync-children' });
+	let deckSibling = 0;
 	for (const child of deck.children) {
 		if (child.kind === 'deck') {
-			renderDeck(childrenEl, child, state, handlers, depth + 1);
+			deckSibling += 1;
+			renderDeck(
+				childrenEl,
+				child,
+				state,
+				handlers,
+				depth + 1,
+				deckSibling,
+			);
 		} else {
-			renderCard(childrenEl, child, state, handlers, depth + 1);
+			renderCard(childrenEl, child, state, handlers);
 		}
 	}
 }
@@ -110,24 +120,13 @@ function renderCard(
 	card: CardNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
-	depth: number,
 ): void {
 	const row = parent.createDiv({
 		cls: 'dta-sync-row dta-sync-row--card',
-		attr: { 'data-depth': String(depth) },
 	});
-	row.style.setProperty('--dta-depth', String(depth));
 
-	row.createSpan({ cls: 'dta-sync-twisty is-leaf' });
-
-	const checkbox = row.createEl('input', {
-		type: 'checkbox',
-		cls: 'dta-sync-check',
-	});
-	checkbox.checked = state.isSelected(card.id);
-	checkbox.addEventListener('change', () => {
-		handlers.onToggleSelect(card, checkbox.checked);
-	});
+	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
+	setIcon(icon, 'sticky-note');
 
 	row.createSpan({
 		cls: 'dta-sync-name',
@@ -141,19 +140,7 @@ function renderCard(
 		});
 	}
 
-	const actions = row.createDiv({ cls: 'dta-sync-actions' });
-
-	const locateBtn = actions.createEl('button', {
-		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '定位到卡片', title: '定位到卡片' },
-	});
-	setIcon(locateBtn, 'file-text');
-	locateBtn.addEventListener('click', (evt) => {
-		evt.stopPropagation();
-		handlers.onLocate(card.lineStart);
-	});
-
-	const syncBtn = actions.createEl('button', {
+	const syncBtn = row.createEl('button', {
 		cls: 'dta-sync-action clickable-icon',
 		attr: { 'aria-label': '同步卡片', title: '同步卡片（尚未实现）' },
 	});
@@ -162,4 +149,27 @@ function renderCard(
 		evt.stopPropagation();
 		handlers.onSyncStub(card);
 	});
+
+	const checkbox = row.createEl('input', {
+		type: 'checkbox',
+		cls: 'dta-sync-check',
+	});
+	checkbox.checked = state.isSelected(card.id);
+	checkbox.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+	});
+	checkbox.addEventListener('change', () => {
+		handlers.onToggleSelect(card, checkbox.checked);
+	});
+}
+
+function formatDeckLabel(
+	name: string,
+	depth: number,
+	siblingIndex: number | null,
+): string {
+	if (depth === 0 || siblingIndex === null) {
+		return name;
+	}
+	return `${siblingIndex}. ${name}`;
 }

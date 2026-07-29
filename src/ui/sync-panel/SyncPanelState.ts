@@ -6,8 +6,10 @@ export class SyncPanelState {
 	readonly selected = new Set<string>();
 	readonly collapsed = new Set<string>();
 	tab: SyncPanelTab = 'learning';
+	private root: DeckNode | null = null;
 
 	resetFromParsed(parsed: ParsedHeadFile): void {
+		this.root = parsed.root;
 		this.selected.clear();
 		this.collapsed.clear();
 		this.selectAll(parsed.root);
@@ -36,6 +38,18 @@ export class SyncPanelState {
 			}
 		};
 		walk(root, true);
+	}
+
+	expandAll(): void {
+		this.collapsed.clear();
+	}
+
+	collapseAll(): void {
+		if (!this.root) {
+			return;
+		}
+		this.collapsed.clear();
+		this.collapseAllExceptRoot(this.root);
 	}
 
 	isSelected(id: string): boolean {

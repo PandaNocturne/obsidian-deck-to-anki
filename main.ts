@@ -13,7 +13,7 @@ export default class DeckToAnkiPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.addRibbonIcon('layers', 'Anki 同步检查面板', () => {
+		this.addRibbonIcon('layers', 'Deck To Anki Sync', () => {
 			openSyncPanel(this);
 		});
 

@@ -9,7 +9,6 @@ export class SyncPanelModal extends Modal {
 	private readonly plugin: DeckToAnkiPlugin;
 	private readonly state = new SyncPanelState();
 	private parsed: ParsedHeadFile | null = null;
-	private bodyEl!: HTMLElement;
 	private treeHostEl!: HTMLElement;
 	private statusEl!: HTMLElement;
 	private learningTabEl!: HTMLButtonElement;
@@ -22,7 +21,7 @@ export class SyncPanelModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass('dta-sync-modal');
-		this.titleEl.setText('Anki 同步检查面板');
+		this.titleEl.setText('Deck To Anki Sync');
 		this.renderChrome();
 		void this.reload();
 	}
@@ -36,7 +35,47 @@ export class SyncPanelModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 
-		const toolbar = contentEl.createDiv({ cls: 'dta-sync-toolbar' });
+		const tabs = contentEl.createDiv({ cls: 'dta-sync-tabs' });
+		this.learningTabEl = tabs.createEl('button', {
+			cls: 'dta-sync-tab',
+			text: '学习中',
+		});
+		this.archivedTabEl = tabs.createEl('button', {
+			cls: 'dta-sync-tab',
+			text: '已归档',
+		});
+		this.learningTabEl.addEventListener('click', () => {
+			this.state.tab = 'learning';
+			this.renderBody();
+		});
+		this.archivedTabEl.addEventListener('click', () => {
+			this.state.tab = 'archived';
+			this.renderBody();
+		});
+
+		const meta = contentEl.createDiv({ cls: 'dta-sync-meta' });
+		this.statusEl = meta.createDiv({ cls: 'dta-sync-status' });
+		const toolbar = meta.createDiv({ cls: 'dta-sync-toolbar' });
+
+		const expandBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '全部展开', title: '全部展开' },
+		});
+		setIcon(expandBtn, 'chevrons-down');
+		expandBtn.addEventListener('click', () => {
+			this.state.expandAll();
+			this.renderBody();
+		});
+
+		const collapseBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '全部折叠', title: '全部折叠' },
+		});
+		setIcon(collapseBtn, 'chevrons-up');
+		collapseBtn.addEventListener('click', () => {
+			this.state.collapseAll();
+			this.renderBody();
+		});
 
 		const refreshBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
@@ -47,45 +86,33 @@ export class SyncPanelModal extends Modal {
 			void this.reload();
 		});
 
-		const syncAllBtn = toolbar.createEl('button', {
-			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '同步', title: '同步（尚未实现）' },
-		});
-		setIcon(syncAllBtn, 'download');
-		syncAllBtn.addEventListener('click', () => {
-			new Notice('同步功能尚未实现');
-		});
-
-		const archiveBtn = toolbar.createEl('button', {
-			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '归档', title: '归档（尚未实现）' },
-		});
-		setIcon(archiveBtn, 'archive');
-		archiveBtn.addEventListener('click', () => {
-			new Notice('归档功能尚未实现');
-		});
-
-		this.statusEl = contentEl.createDiv({ cls: 'dta-sync-status' });
-		this.bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
-		this.treeHostEl = this.bodyEl.createDiv({ cls: 'dta-sync-tree-host' });
+		const bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
+		this.treeHostEl = bodyEl.createDiv({ cls: 'dta-sync-tree-host' });
 
 		const footer = contentEl.createDiv({ cls: 'dta-sync-footer' });
-		this.learningTabEl = footer.createEl('button', {
-			cls: 'dta-sync-tab',
-			text: '学习中',
+
+		const forceBtn = footer.createEl('button', {
+			cls: 'dta-sync-footer-btn mod-warning',
+			text: 'Force',
 		});
-		this.archivedTabEl = footer.createEl('button', {
-			cls: 'dta-sync-tab',
-			text: '已归档',
+		forceBtn.addEventListener('click', () => {
+			new Notice('Force 同步尚未实现');
 		});
 
-		this.learningTabEl.addEventListener('click', () => {
-			this.state.tab = 'learning';
-			this.renderBody();
+		const updateBtn = footer.createEl('button', {
+			cls: 'dta-sync-footer-btn mod-cta',
+			text: 'Update',
 		});
-		this.archivedTabEl.addEventListener('click', () => {
-			this.state.tab = 'archived';
-			this.renderBody();
+		updateBtn.addEventListener('click', () => {
+			new Notice('Update 同步尚未实现');
+		});
+
+		const cancelBtn = footer.createEl('button', {
+			cls: 'dta-sync-footer-btn',
+			text: 'Cancel',
+		});
+		cancelBtn.addEventListener('click', () => {
+			this.close();
 		});
 	}
 
@@ -165,9 +192,6 @@ export class SyncPanelModal extends Modal {
 				this.state.setSelectedCascade(node, selected);
 				this.renderBody();
 			},
-			onLocate: (lineStart) => {
-				void this.locateLine(lineStart);
-			},
 			onSyncStub: (node) => {
 				const label =
 					node.kind === 'deck'
@@ -193,36 +217,6 @@ export class SyncPanelModal extends Modal {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const file = view?.file;
 		return file instanceof TFile ? file : null;
-	}
-
-	private async locateLine(lineStart: number): Promise<void> {
-		if (!this.parsed || lineStart < 0) {
-			return;
-		}
-
-		const file = this.app.vault.getAbstractFileByPath(this.parsed.filePath);
-		if (!(file instanceof TFile)) {
-			new Notice('无法定位：文件不存在');
-			return;
-		}
-
-		const leaf = this.app.workspace.getLeaf(false);
-		await leaf.openFile(file);
-		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
-		if (!view) {
-			return;
-		}
-
-		const editor = view.editor;
-		editor.setCursor({ line: lineStart, ch: 0 });
-		editor.scrollIntoView(
-			{
-				from: { line: lineStart, ch: 0 },
-				to: { line: lineStart, ch: 0 },
-			},
-			true,
-		);
-		view.editor.focus();
 	}
 }
 
