@@ -9,6 +9,8 @@ export interface SyncPanelTreeHandlers {
 	/** Open YAML settings for a note-level deck (root or file-mode child). */
 	onDeckSettings?: (deck: DeckNode) => void;
 	onCardOpen?: (card: CardNode) => void;
+	/** Double-click deck title → open source file or heading. */
+	onDeckOpen?: (deck: DeckNode) => void;
 }
 
 export interface SyncPanelTreeOptions {
@@ -69,9 +71,26 @@ function renderDeck(
 		deck.deckType ?? (isRoot && showRootMeta ? options.parseType : undefined);
 	const showSettings = Boolean(badgeType && handlers.onDeckSettings);
 
+	const toggleCollapse = (evt: MouseEvent): void => {
+		if (!hasChildren) {
+			return;
+		}
+		evt.stopPropagation();
+		handlers.onToggleCollapse(deck.id);
+	};
+
+	// Fold/expand: blank row area or twisty only (not title / actions).
 	if (hasChildren) {
 		row.addClass('is-clickable');
-		row.addEventListener('click', () => {
+		row.addEventListener('click', (evt) => {
+			const target = evt.target as HTMLElement | null;
+			if (
+				target?.closest(
+					'.dta-sync-name, .dta-sync-action, .dta-sync-check, input, button, .dta-sync-type-badge, .dta-sync-count',
+				)
+			) {
+				return;
+			}
 			handlers.onToggleCollapse(deck.id);
 		});
 	}
@@ -88,16 +107,30 @@ function renderDeck(
 	});
 	if (hasChildren) {
 		setIcon(twisty, collapsed ? 'plus-circle' : 'minus-circle');
+		twisty.addEventListener('click', toggleCollapse);
 	} else {
 		twisty.addClass('is-empty');
 		setIcon(twisty, 'plus-circle');
 	}
 
-	const label = formatDeckLabel(deck.name, depth, siblingIndex);
-	row.createSpan({
+	const nameEl = row.createSpan({
 		cls: 'dta-sync-name',
-		text: label,
-		attr: isRoot ? { title: `Root deck: ${deck.name}` } : undefined,
+		text: formatDeckLabel(deck.name, depth, siblingIndex),
+	});
+	nameEl.setAttribute(
+		'title',
+		handlers.onDeckOpen
+			? '双击打开笔记或标题'
+			: isRoot
+				? `Root deck: ${deck.name}`
+				: deck.name,
+	);
+	nameEl.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+	});
+	nameEl.addEventListener('dblclick', (evt) => {
+		evt.stopPropagation();
+		handlers.onDeckOpen?.(deck);
 	});
 
 	if (badgeType) {
@@ -182,7 +215,7 @@ function renderCard(
 ): void {
 	const row = parent.createDiv({
 		cls: 'dta-sync-row dta-sync-row--card is-clickable',
-		attr: { title: 'Double-click to open in Obsidian' },
+		// attr: { title: 'Double-click to open in Obsidian' },
 	});
 
 	row.addEventListener('dblclick', (evt) => {

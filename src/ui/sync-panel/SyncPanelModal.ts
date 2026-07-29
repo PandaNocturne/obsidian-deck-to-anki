@@ -404,6 +404,9 @@ export class SyncPanelModal extends Modal {
 					onDeckSettings: (deck) => {
 						void this.openDeckSettings(deck);
 					},
+					onDeckOpen: (deck) => {
+						void this.openDeck(deck);
+					},
 				},
 				treeOptions,
 			);
@@ -428,6 +431,9 @@ export class SyncPanelModal extends Modal {
 					onSyncStub: () => undefined,
 					onDeckSettings: (deck) => {
 						void this.openDeckSettings(deck);
+					},
+					onDeckOpen: (deck) => {
+						void this.openDeck(deck);
 					},
 				},
 				treeOptions,
@@ -473,6 +479,9 @@ export class SyncPanelModal extends Modal {
 				onCardOpen: (card) => {
 					void this.openCard(card);
 				},
+				onDeckOpen: (deck) => {
+					void this.openDeck(deck);
+				},
 			},
 			treeOptions,
 		);
@@ -491,6 +500,25 @@ export class SyncPanelModal extends Modal {
 		}
 
 		const heading = card.headingLevel > 0 ? card.front.trim() : '';
+		const linktext = heading ? `${filePath}#${heading}` : filePath;
+		await this.app.workspace.openLinkText(linktext, '', false);
+	}
+
+	private async openDeck(deck: DeckNode): Promise<void> {
+		const filePath =
+			deck.sourceFilePath ??
+			this.parsed?.filePath ??
+			this.findParsedForDeck(deck)?.filePath;
+		if (!filePath) {
+			new Notice('找不到牌组对应笔记');
+			return;
+		}
+
+		// Heading decks → file#heading; note-level / file root → file only.
+		const heading =
+			deck.headingLevel > 0 && deck.lineStart >= 0
+				? deck.name.trim()
+				: '';
 		const linktext = heading ? `${filePath}#${heading}` : filePath;
 		await this.app.workspace.openLinkText(linktext, '', false);
 	}
