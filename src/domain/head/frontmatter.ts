@@ -1,7 +1,7 @@
 import type { DeckType } from './types';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
-const DECK_TYPE_VALUES: DeckType[] = ['head', 'basic', 'file'];
+const DECK_TYPE_VALUES: DeckType[] = ['head', 'basic', 'file', 'list'];
 const LEGACY_KEYS = new Set(['DECK TYPE', 'CARD LEVEL', 'ARCHIVED']);
 
 export interface FrontmatterMeta {

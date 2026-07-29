@@ -10,21 +10,55 @@ export interface FileDeckSettingsValues {
 	deckStatus: boolean;
 }
 
+export interface FileDeckSettingsOptions {
+	/** Types selectable in the dropdown. Defaults to head / basic / file / list. */
+	allowedDeckTypes?: DeckType[];
+}
+
+export interface FileDeckSettingsResult {
+	/** true when Save wrote (or attempted) YAML; false when closed without Save. */
+	persisted: boolean;
+}
+
+const DEFAULT_DECK_TYPES: DeckType[] = ['head', 'basic', 'file', 'list'];
+
+const DECK_TYPE_LABELS: Record<DeckType, string> = {
+	head: 'Head',
+	basic: 'Basic',
+	file: 'File',
+	list: 'List',
+};
+
 export class FileDeckSettingsModal extends Modal {
 	private readonly file: TFile;
-	private readonly onSaved: () => void | Promise<void>;
+	private readonly onDone: (
+		values: FileDeckSettingsValues,
+		result: FileDeckSettingsResult,
+	) => void | Promise<void>;
+	private readonly allowedDeckTypes: DeckType[];
+	private readonly initial: FileDeckSettingsValues;
 	private draft: FileDeckSettingsValues;
+	private finished = false;
 
 	constructor(
 		plugin: DeckToAnkiPlugin,
 		file: TFile,
 		initial: FileDeckSettingsValues,
-		onSaved: () => void | Promise<void>,
+		onDone: (
+			values: FileDeckSettingsValues,
+			result: FileDeckSettingsResult,
+		) => void | Promise<void>,
+		options?: FileDeckSettingsOptions,
 	) {
 		super(plugin.app);
 		this.file = file;
-		this.onSaved = onSaved;
+		this.onDone = onDone;
+		this.allowedDeckTypes = options?.allowedDeckTypes ?? DEFAULT_DECK_TYPES;
+		this.initial = { ...initial };
 		this.draft = { ...initial };
+		if (!this.allowedDeckTypes.includes(this.draft.deckType)) {
+			this.draft.deckType = this.allowedDeckTypes[0] ?? 'head';
+		}
 	}
 
 	onOpen(): void {
@@ -34,7 +68,22 @@ export class FileDeckSettingsModal extends Modal {
 	}
 
 	onClose(): void {
+		if (!this.finished) {
+			this.finished = true;
+			if (this.isDirty()) {
+				void this.onDone(this.draft, { persisted: false });
+			}
+		}
 		this.contentEl.empty();
+	}
+
+	private isDirty(): boolean {
+		return (
+			this.draft.deckType !== this.initial.deckType ||
+			this.draft.deckName !== this.initial.deckName ||
+			this.draft.deckLevel !== this.initial.deckLevel ||
+			this.draft.deckStatus !== this.initial.deckStatus
+		);
 	}
 
 	private renderForm(): void {
@@ -43,23 +92,21 @@ export class FileDeckSettingsModal extends Modal {
 
 		contentEl.createEl('p', {
 			cls: 'dta-file-settings-hint',
-			text: 'Stored as camelCase YAML: deckType, deckName, deckLevel (head only), deckStatus.',
+			text: '切换类型后关闭即可按新类型解析；只有 Save 会写入 YAML。',
 		});
 
 		new Setting(contentEl)
 			.setName('Deck type')
-			.setDesc('YAML: deckType')
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption('head', 'Head')
-					.addOption('basic', 'Basic')
-					.addOption('file', 'File')
-					.setValue(this.draft.deckType)
-					.onChange((value) => {
-						this.draft.deckType = value as DeckType;
-						this.renderForm();
-					}),
-			);
+			.setDesc('解析类型（Save 时写入 deckType）')
+			.addDropdown((dropdown) => {
+				for (const type of this.allowedDeckTypes) {
+					dropdown.addOption(type, DECK_TYPE_LABELS[type]);
+				}
+				dropdown.setValue(this.draft.deckType).onChange((value) => {
+					this.draft.deckType = value as DeckType;
+					this.renderForm();
+				});
+			});
 
 		new Setting(contentEl)
 			.setName('Deck name')
@@ -103,7 +150,7 @@ export class FileDeckSettingsModal extends Modal {
 		const actions = contentEl.createDiv({ cls: 'dta-file-settings-actions' });
 		const cancelBtn = actions.createEl('button', {
 			cls: 'dta-sync-footer-btn',
-			text: 'Cancel',
+			text: 'Close',
 		});
 		cancelBtn.addEventListener('click', () => this.close());
 
@@ -133,8 +180,9 @@ export class FileDeckSettingsModal extends Modal {
 			new Notice('已更新笔记 YAML 属性');
 		}
 
+		this.finished = true;
 		this.close();
-		await this.onSaved();
+		await this.onDone(this.draft, { persisted: true });
 	}
 }
 
@@ -142,7 +190,11 @@ export function openFileDeckSettings(
 	plugin: DeckToAnkiPlugin,
 	file: TFile,
 	initial: FileDeckSettingsValues,
-	onSaved: () => void | Promise<void>,
+	onDone: (
+		values: FileDeckSettingsValues,
+		result: FileDeckSettingsResult,
+	) => void | Promise<void>,
+	options?: FileDeckSettingsOptions,
 ): void {
-	new FileDeckSettingsModal(plugin, file, initial, onSaved).open();
+	new FileDeckSettingsModal(plugin, file, initial, onDone, options).open();
 }

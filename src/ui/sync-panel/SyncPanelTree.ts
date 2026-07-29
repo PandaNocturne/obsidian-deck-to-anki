@@ -6,12 +6,13 @@ export interface SyncPanelTreeHandlers {
 	onToggleCollapse: (deckId: string) => void;
 	onToggleSelect: (node: DeckNode | CardNode, selected: boolean) => void;
 	onSyncStub: (node: DeckNode | CardNode) => void;
-	onRootSettings?: () => void;
+	/** Open YAML settings for a note-level deck (root or file-mode child). */
+	onDeckSettings?: (deck: DeckNode) => void;
 	onCardOpen?: (card: CardNode) => void;
 }
 
 export interface SyncPanelTreeOptions {
-	/** Parse type shown as a badge on the root deck row. */
+	/** Fallback parse type badge when a deck has no deckType. */
 	parseType: DeckType;
 }
 
@@ -44,6 +45,8 @@ function renderDeck(
 	const hasChildren = deck.children.length > 0;
 	const collapsed = state.isCollapsed(deck.id);
 	const isRoot = depth === 0;
+	const badgeType = deck.deckType ?? (isRoot ? options.parseType : undefined);
+	const showSettings = Boolean(badgeType && handlers.onDeckSettings);
 
 	if (hasChildren) {
 		row.addClass('is-clickable');
@@ -76,11 +79,11 @@ function renderDeck(
 		attr: isRoot ? { title: `Root deck: ${deck.name}` } : undefined,
 	});
 
-	if (isRoot) {
+	if (badgeType) {
 		row.createSpan({
 			cls: 'dta-sync-type-badge',
-			text: options.parseType,
-			attr: { title: `deckType: ${options.parseType}` },
+			text: badgeType,
+			attr: { title: `deckType: ${badgeType}` },
 		});
 	}
 
@@ -89,7 +92,7 @@ function renderDeck(
 		text: String(deck.cardCount),
 	});
 
-	if (isRoot && handlers.onRootSettings) {
+	if (showSettings) {
 		const settingsBtn = row.createEl('button', {
 			cls: 'dta-sync-action clickable-icon',
 			attr: {
@@ -100,7 +103,7 @@ function renderDeck(
 		setIcon(settingsBtn, 'settings');
 		settingsBtn.addEventListener('click', (evt) => {
 			evt.stopPropagation();
-			handlers.onRootSettings?.();
+			handlers.onDeckSettings?.(deck);
 		});
 	}
 

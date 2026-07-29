@@ -37,6 +37,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				dropdown
 					.addOption('head', 'Head (heading mode)')
 					.addOption('basic', 'Basic (separator mode)')
+					.addOption('list', 'List (top-level list mode)')
 					.addOption('file', 'File (linked-file mode)')
 					.setValue(this.plugin.settings.defaultDeckType)
 					.onChange(async (value) => {

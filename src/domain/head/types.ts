@@ -1,4 +1,4 @@
-export type DeckType = 'head' | 'basic' | 'file';
+export type DeckType = 'head' | 'basic' | 'file' | 'list';
 
 export type SyncPanelNodeKind = 'deck' | 'card';
 
@@ -19,6 +19,8 @@ export interface CardNode {
 	deckPath: string;
 	noteId?: number;
 	idMarker?: IdMarkerInfo;
+	/** Source note path (file mode child notes). */
+	sourceFilePath?: string;
 }
 
 export interface DeckNode {
@@ -31,6 +33,12 @@ export interface DeckNode {
 	lineStart: number;
 	cardCount: number;
 	children: Array<DeckNode | CardNode>;
+	sourceFilePath?: string;
+	/**
+	 * Note-level deck type (root, or file-mode child note).
+	 * When set, the sync tree shows a type badge and settings control.
+	 */
+	deckType?: DeckType;
 }
 
 export interface ParsedHeadFile {
