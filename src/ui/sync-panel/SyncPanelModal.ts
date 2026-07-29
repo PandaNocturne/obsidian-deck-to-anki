@@ -1,18 +1,61 @@
-import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
-import type DeckToAnkiPlugin from '../../../main';
-import { upsertDeckYaml, parseFrontmatter } from '../../domain/head/frontmatter';
-import { parseNoteFile } from '../../domain/parseNote';
-import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
+import { clearAllDeckYaml, upsertDeckYaml, parseFrontmatter } from '../../domain/head/frontmatter';
 import type {
 	CardNode,
 	DeckNode,
 	DeckType,
 	ParsedHeadFile,
 } from '../../domain/head/types';
+import { parseNoteFile } from '../../domain/parseNote';
+import { resolveDeckFileParent } from '../../domain/resolveWikiFile';
+import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
+import type DeckToAnkiPlugin from '../../../main';
+import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
-import type { FileDeckSettingsValues } from './FileDeckSettingsModal';
 import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
+
+interface SessionDeckSettings {
+	deckType: DeckType;
+	deckName: string;
+	deckLevel: number;
+	deckStatus: boolean;
+}
+
+/** Note-level deck under a file parent (has deckType + matching source path). */
+function findChildNoteDeck(
+	root: DeckNode,
+	childFilePath: string,
+): DeckNode | null {
+	for (const child of root.children) {
+		if (
+			child.kind === 'deck' &&
+			child.sourceFilePath === childFilePath &&
+			child.deckType
+		) {
+			return child;
+		}
+	}
+	const walk = (node: DeckNode): DeckNode | null => {
+		for (const child of node.children) {
+			if (child.kind !== 'deck') {
+				continue;
+			}
+			if (
+				child.sourceFilePath === childFilePath &&
+				child.deckType &&
+				child.id.startsWith('deck:file:')
+			) {
+				return child;
+			}
+			const found = walk(child);
+			if (found) {
+				return found;
+			}
+		}
+		return null;
+	};
+	return walk(root);
+}
 
 export class SyncPanelModal extends Modal {
 	private readonly plugin: DeckToAnkiPlugin;
@@ -29,9 +72,11 @@ export class SyncPanelModal extends Modal {
 	private allTabEl!: HTMLButtonElement;
 	private archivedTabEl!: HTMLButtonElement;
 	/** Session parse override for the active note (not written to YAML until Save/Update). */
-	private sessionOverride: FileDeckSettingsValues | null = null;
+	private sessionOverride: SessionDeckSettings | null = null;
 	/** Session type overrides for file-mode child notes (path → values). */
-	private readonly childOverrides = new Map<string, FileDeckSettingsValues>();
+	private readonly childOverrides = new Map<string, SessionDeckSettings>();
+	/** When opened from a child via deckFile, the focused child deck name. */
+	private focusChildLabel: string | null = null;
 
 	constructor(plugin: DeckToAnkiPlugin) {
 		super(plugin.app);
@@ -52,6 +97,7 @@ export class SyncPanelModal extends Modal {
 		this.parsed = null;
 		this.viewRoot = null;
 		this.forestItems = [];
+		this.focusChildLabel = null;
 	}
 
 	private renderChrome(): void {
@@ -181,6 +227,22 @@ export class SyncPanelModal extends Modal {
 
 	private async reloadCurrent(file: TFile): Promise<void> {
 		const content = await this.app.vault.read(file);
+		const meta = parseFrontmatter(content);
+
+		let parseFile = file;
+		let parseContent = content;
+		let focusChildPath: string | null = null;
+
+		// Child note with deckFile → open parent file deck, focus this child.
+		if (meta.deckFile) {
+			const parent = resolveDeckFileParent(this.app, meta.deckFile);
+			if (parent && parent.path !== file.path) {
+				parseFile = parent;
+				parseContent = await this.app.vault.read(parent);
+				focusChildPath = file.path;
+			}
+		}
+
 		const childTypeOverrides = new Map<
 			string,
 			Exclude<DeckType, 'file'>
@@ -191,9 +253,16 @@ export class SyncPanelModal extends Modal {
 			}
 		}
 
-		const parsed = await parseNoteFile(this.app, file, content, {
-			deckType: this.sessionOverride?.deckType,
-			deckLevel: this.sessionOverride?.deckLevel,
+		const useSessionOnParseTarget =
+			Boolean(this.sessionOverride) && !focusChildPath;
+
+		const parsed = await parseNoteFile(this.app, parseFile, parseContent, {
+			deckType: useSessionOnParseTarget
+				? this.sessionOverride?.deckType
+				: undefined,
+			deckLevel: useSessionOnParseTarget
+				? this.sessionOverride?.deckLevel
+				: undefined,
 			fallbackDeckType: this.plugin.settings.defaultDeckType || 'head',
 			fallbackDeckLevel: this.plugin.settings.cardHeadingLevel || 4,
 			childCardHeadingLevel: this.plugin.settings.cardHeadingLevel || 4,
@@ -204,10 +273,11 @@ export class SyncPanelModal extends Modal {
 			this.parsed = null;
 			this.viewRoot = null;
 			this.forestItems = [];
+			this.focusChildLabel = null;
 			return;
 		}
 
-		if (this.sessionOverride) {
+		if (useSessionOnParseTarget && this.sessionOverride) {
 			parsed.deckStatus = this.sessionOverride.deckStatus;
 		}
 
@@ -215,9 +285,30 @@ export class SyncPanelModal extends Modal {
 		this.viewRoot = parsed.root;
 		this.forestItems = [parsed];
 		this.forestWarnings = parsed.warnings;
+
+		const focusDeck = focusChildPath
+			? findChildNoteDeck(parsed.root, focusChildPath)
+			: null;
+		this.focusChildLabel = focusDeck?.name ?? null;
+
+		if (focusChildPath && !focusDeck) {
+			this.focusChildLabel = null;
+			this.forestWarnings = [
+				...this.forestWarnings,
+				`未在父牌组中找到当前子笔记（deckFile → ${meta.deckFile}）`,
+			];
+		}
+
 		this.state.resetFromTree(parsed.root, {
-			parseType: this.sessionOverride?.deckType ?? parsed.deckType,
-			cardLevel: this.sessionOverride?.deckLevel ?? parsed.deckLevel,
+			parseType:
+				(useSessionOnParseTarget
+					? this.sessionOverride?.deckType
+					: undefined) ?? parsed.deckType,
+			cardLevel:
+				(useSessionOnParseTarget
+					? this.sessionOverride?.deckLevel
+					: undefined) ?? parsed.deckLevel,
+			selectOnly: focusDeck ?? undefined,
 		});
 	}
 
@@ -234,6 +325,7 @@ export class SyncPanelModal extends Modal {
 		this.viewRoot = result.root;
 		this.forestItems = result.items;
 		this.forestWarnings = result.warnings;
+		this.focusChildLabel = null;
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
 			cardLevel: this.plugin.settings.cardHeadingLevel || 4,
@@ -278,11 +370,14 @@ export class SyncPanelModal extends Modal {
 				this.sessionOverride.deckType !== this.parsed.yamlDeckType
 					? ' · 会话未写入'
 					: '';
+			const focusHint = this.focusChildLabel
+				? ` · 仅勾选「${this.focusChildLabel}」`
+				: '';
 			const levelHint =
 				this.parsed.deckType === 'head'
 					? ` · H${this.parsed.deckLevel}`
 					: '';
-			const summary = `${this.parsed.deckName} · ${this.parsed.root.cardCount} 张 · ${this.parsed.deckType}${levelHint} · ${yamlHint}${sessionHint}`;
+			const summary = `${this.parsed.deckName} · ${this.parsed.root.cardCount} 张 · ${this.parsed.deckType}${levelHint} · ${yamlHint}${sessionHint}${focusHint}`;
 			this.statusEl.setText(
 				warningText ? `${summary} — ${warningText}` : summary,
 			);
@@ -487,11 +582,28 @@ export class SyncPanelModal extends Modal {
 			file,
 			{ deckType, deckName, deckLevel, deckStatus },
 			async (values, result) => {
+				if (values.deckType === 'none') {
+					if (result.persisted) {
+						if (isCurrentRoot) {
+							this.sessionOverride = null;
+						}
+						this.childOverrides.delete(file.path);
+						new Notice('已清除 deck 属性，将按默认类型解析');
+					}
+					await this.reload({ preserveTab: true });
+					return;
+				}
+
 				if (isCurrentRoot) {
 					if (result.persisted) {
 						this.sessionOverride = null;
 					} else {
-						this.sessionOverride = { ...values };
+						this.sessionOverride = {
+							deckType: values.deckType,
+							deckName: values.deckName,
+							deckLevel: values.deckLevel,
+							deckStatus: values.deckStatus,
+						};
 						new Notice(
 							`已切换解析为 ${values.deckType}（未写入 YAML，可用 Update/Save 保存）`,
 						);
@@ -499,7 +611,12 @@ export class SyncPanelModal extends Modal {
 				} else if (result.persisted) {
 					this.childOverrides.delete(file.path);
 				} else if (values.deckType !== 'file') {
-					this.childOverrides.set(file.path, { ...values });
+					this.childOverrides.set(file.path, {
+						deckType: values.deckType,
+						deckName: values.deckName,
+						deckLevel: values.deckLevel,
+						deckStatus: values.deckStatus,
+					});
 					new Notice(
 						`子笔记已按 ${values.deckType} 解析（未写入 YAML）`,
 					);
@@ -526,23 +643,35 @@ export class SyncPanelModal extends Modal {
 		}
 
 		const content = await this.app.vault.read(file);
-		const next = upsertDeckYaml(content, {
-			deckType: this.state.parseType,
-			deckName:
-				this.sessionOverride?.deckName ?? this.parsed?.yamlDeckName,
-			deckLevel:
-				this.state.parseType === 'head' ? this.state.cardLevel : undefined,
-			deckStatus:
-				this.sessionOverride?.deckStatus ??
-				this.parsed?.deckStatus ??
-				false,
+		const meta = parseFrontmatter(content);
+		// Preserve file-mode child → parent index; rewrite in quoted form on Update.
+		const preservedDeckFile = meta.deckFile;
+
+		const deckType = this.state.parseType;
+		const deckName =
+			this.sessionOverride?.deckName?.trim() ||
+			this.parsed?.yamlDeckName?.trim() ||
+			'';
+		const deckStatus =
+			this.sessionOverride?.deckStatus ??
+			this.parsed?.deckStatus ??
+			false;
+
+		// Full overwrite: clear all deck* keys, then write current panel values.
+		const cleared = clearAllDeckYaml(content);
+		const next = upsertDeckYaml(cleared, {
+			deckType,
+			deckName: deckName || undefined,
+			deckLevel: deckType === 'head' ? this.state.cardLevel : undefined,
+			deckStatus,
+			deckFile: preservedDeckFile ?? null,
 		});
 
 		if (next === content) {
 			new Notice('YAML 已是最新');
 		} else {
 			await this.app.vault.modify(file, next);
-			new Notice('已写入 YAML：deckType / deckName / deckLevel / deckStatus');
+			new Notice('已覆盖写入 YAML：deckType / deckName / deckLevel / deckStatus');
 		}
 
 		this.sessionOverride = null;
