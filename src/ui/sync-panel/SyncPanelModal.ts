@@ -9,6 +9,7 @@ import { parseNoteFile } from '../../domain/parseNote';
 import { resolveDeckFileParent } from '../../domain/resolveWikiFile';
 import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
 import type DeckToAnkiPlugin from '../../../main';
+import { AnkiConnectClient } from '../../anki/AnkiConnectClient';
 import {
 	DECK_TEMPLATE_IDS,
 	type DeckTemplateId,
@@ -523,6 +524,9 @@ export class SyncPanelModal extends Modal {
 				onCardOpen: (card) => {
 					void this.openCard(card);
 				},
+				onOpenInAnki: (noteId) => {
+					void this.openNoteInAnki(noteId);
+				},
 				onDeckOpen: (deck) => {
 					void this.openDeck(deck);
 				},
@@ -566,6 +570,28 @@ export class SyncPanelModal extends Modal {
 			const msg = error instanceof Error ? error.message : String(error);
 			new Notice(`同步失败：${msg}`);
 			this.statusEl.setText(`同步失败：${msg}`);
+		}
+	}
+
+	private async openNoteInAnki(noteId: number): Promise<void> {
+		const client = new AnkiConnectClient(
+			() =>
+				this.plugin.settings.ankiConnectUrl ||
+				'http://127.0.0.1:8765',
+		);
+		try {
+			await client.ping();
+			const cards = await client.guiBrowseNote(noteId);
+			if (cards.length === 0) {
+				new Notice(
+					`Anki 中未找到笔记 ID ${noteId}（可能已删除，可重新同步）`,
+				);
+				return;
+			}
+			new Notice(`已在 Anki 浏览器中打开 ID ${noteId}`);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			new Notice(`无法打开 Anki 卡片：${msg}`);
 		}
 	}
 

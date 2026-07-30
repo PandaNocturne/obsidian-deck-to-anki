@@ -21,6 +21,8 @@ export interface SyncPanelTreeHandlers {
 	/** Preview parsed front / back. */
 	onCardPreview?: (card: CardNode) => void;
 	onCardOpen?: (card: CardNode) => void;
+	/** Click Anki note id → open that note in Anki browser. */
+	onOpenInAnki?: (noteId: number) => void;
 	/** Double-click deck title → open source file or heading. */
 	onDeckOpen?: (deck: DeckNode) => void;
 }
@@ -278,7 +280,7 @@ function renderCard(
 		const target = evt.target as HTMLElement | null;
 		if (
 			target?.closest(
-				'input, button, .dta-sync-action, .dta-sync-check',
+				'input, button, .dta-sync-action, .dta-sync-check, .dta-sync-id',
 			)
 		) {
 			return;
@@ -321,15 +323,27 @@ function renderCard(
 		}
 	}
 
-	if (card.blockId) {
+	if (card.noteId !== undefined) {
+		const idEl = row.createSpan({
+			cls: 'dta-sync-id',
+			text: `ID ${card.noteId}`,
+			attr: {
+				title: handlers.onOpenInAnki
+					? '在 Anki 中打开此笔记'
+					: `Anki note id: ${card.noteId}`,
+			},
+		});
+		if (handlers.onOpenInAnki) {
+			idEl.addClass('is-clickable');
+			idEl.addEventListener('click', (evt) => {
+				evt.stopPropagation();
+				handlers.onOpenInAnki?.(card.noteId!);
+			});
+		}
+	} else if (card.blockId) {
 		row.createSpan({
 			cls: 'dta-sync-id',
 			text: `^${card.blockId}`,
-		});
-	} else if (card.noteId !== undefined) {
-		row.createSpan({
-			cls: 'dta-sync-id',
-			text: `ID ${card.noteId}`,
 		});
 	}
 

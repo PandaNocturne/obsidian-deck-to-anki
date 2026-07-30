@@ -333,6 +333,17 @@
 	letter-spacing: 0.02em;
 }
 
+.dta-sync-id.is-clickable {
+	cursor: pointer;
+	color: var(--text-accent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 35%, var(--background-modifier-border));
+}
+
+.dta-sync-id.is-clickable:hover {
+	background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	border-color: var(--interactive-accent);
+}
+
 .dta-sync-card-icon {
 	display: inline-flex;
 	align-items: center;

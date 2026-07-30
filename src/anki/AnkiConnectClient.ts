@@ -301,6 +301,20 @@ export class AnkiConnectClient {
 		}
 	}
 
+	/**
+	 * Open Anki's Card Browser focused on a search query.
+	 * Example: `nid:1649198355435` for a single note.
+	 */
+	async guiBrowse(query: string): Promise<number[]> {
+		const ids = await this.invoke<number[]>('guiBrowse', { query });
+		return Array.isArray(ids) ? ids : [];
+	}
+
+	/** Open browser on a note by Anki note id. */
+	async guiBrowseNote(noteId: number): Promise<number[]> {
+		return this.guiBrowse(`nid:${noteId}`);
+	}
+
 	private async invoke<TResult>(
 		action: string,
 		params: Record<string, unknown>,
