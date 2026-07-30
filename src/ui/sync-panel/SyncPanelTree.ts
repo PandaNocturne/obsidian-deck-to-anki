@@ -241,11 +241,6 @@ function renderDeck(
 		});
 	}
 
-	row.createSpan({
-		cls: 'dta-sync-count',
-		text: String(deck.cardCount),
-	});
-
 	renderStatusBadges(row, countSyncStatusInDeck(deck));
 
 	if (showSettings) {
