@@ -59,6 +59,18 @@ export class AnkiConnectClient {
 		});
 	}
 
+	async modelFieldRename(
+		modelName: string,
+		oldFieldName: string,
+		newFieldName: string,
+	): Promise<void> {
+		await this.invoke('modelFieldRename', {
+			modelName,
+			oldFieldName,
+			newFieldName,
+		});
+	}
+
 	async createDeck(deck: string): Promise<void> {
 		await this.invoke('createDeck', { deck });
 	}

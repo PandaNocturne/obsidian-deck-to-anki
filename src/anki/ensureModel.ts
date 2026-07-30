@@ -1,10 +1,21 @@
 import type { AnkiConnectClient } from './AnkiConnectClient';
 import {
+	FIELD_BACK,
+	FIELD_BACKLINK,
+	FIELD_FRONT,
+	FIELD_TAGS,
 	MODEL_FIELDS,
 	swapFrontBackFields,
 	type DeckTemplateId,
 	type DeckTemplateStyle,
 } from './templates';
+
+/** Legacy field names from earlier plugin versions. */
+const LEGACY_FIELD_RENAMES: Array<{ from: string; to: string }> = [
+	{ from: 'Front', to: FIELD_FRONT },
+	{ from: 'Back', to: FIELD_BACK },
+	{ from: 'DeckBacklink', to: FIELD_BACKLINK },
+];
 
 function buildCardTemplates(
 	templateId: DeckTemplateId,
@@ -33,22 +44,56 @@ function buildCardTemplates(
 	];
 }
 
-/** Add any missing ob-deck-* fields on an existing Anki note type. */
-async function ensureModelFields(
+/**
+ * Migrate legacy Front/Back/DeckBacklink → ob-deck-* and add any missing fields.
+ * Safe to call on every sync.
+ */
+export async function ensureModelFields(
 	client: AnkiConnectClient,
 	templateId: DeckTemplateId,
-): Promise<void> {
-	const existing = new Set(await client.modelFieldNames(templateId));
+): Promise<string[]> {
+	let existing = await client.modelFieldNames(templateId);
+	const warnings: string[] = [];
+
+	for (const { from, to } of LEGACY_FIELD_RENAMES) {
+		const hasOld = existing.includes(from);
+		const hasNew = existing.includes(to);
+		if (hasOld && !hasNew) {
+			try {
+				await client.modelFieldRename(templateId, from, to);
+			} catch (error) {
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				warnings.push(`重命名字段 ${from}→${to} 失败：${msg}`);
+				// Fall through to modelFieldAdd below.
+			}
+			existing = await client.modelFieldNames(templateId);
+		}
+	}
+
+	existing = await client.modelFieldNames(templateId);
+	const have = new Set(existing);
 	for (const fieldName of MODEL_FIELDS) {
-		if (existing.has(fieldName)) {
+		if (have.has(fieldName)) {
 			continue;
 		}
-		await client.modelFieldAdd(templateId, fieldName);
+		try {
+			await client.modelFieldAdd(templateId, fieldName);
+			have.add(fieldName);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`笔记类型 ${templateId} 缺少字段 ${fieldName}，自动添加失败：${msg}`,
+			);
+		}
 	}
+
+	return warnings;
 }
 
 /**
  * Ensure the selected ob-deck model exists in Anki.
+ * Always migrates/adds ob-deck-* fields when the model already exists.
  * Templates/CSS are applied on first create, or whenever `force` is true.
  */
 export async function ensureDeckTemplateModel(
@@ -71,11 +116,12 @@ export async function ensureDeckTemplateModel(
 		return 'created';
 	}
 
+	// Existing models must gain the new field names before any note sync.
+	await ensureModelFields(client, templateId);
+
 	if (!force) {
 		return 'exists';
 	}
-
-	await ensureModelFields(client, templateId);
 
 	// Use live template names from Anki (may not be exactly "Card 1").
 	const live = await client.modelTemplates(templateId);

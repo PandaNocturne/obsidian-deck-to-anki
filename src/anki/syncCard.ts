@@ -107,7 +107,21 @@ async function upsertAnkiNote(
 		deckTagsEnabled: boolean;
 	},
 ): Promise<{ noteId: number; created: boolean }> {
-	const { deckName, modelName, fields, tags, deckTagsEnabled } = input;
+	const { deckName, modelName, tags, deckTagsEnabled } = input;
+
+	const modelFields = await client.modelFieldNames(modelName);
+	const allowed = new Set(modelFields);
+	const fields: Record<string, string> = {};
+	for (const [key, value] of Object.entries(input.fields)) {
+		if (allowed.has(key)) {
+			fields[key] = value;
+		}
+	}
+	if (!(FIELD_FRONT in fields)) {
+		throw new Error(
+			`笔记类型「${modelName}」缺少字段 ${FIELD_FRONT}。请打开插件设置点击「强制更新」，或确认 AnkiConnect 可用后重试同步。`,
+		);
+	}
 
 	const applyUpdate = async (noteId: number): Promise<void> => {
 		await client.updateNoteFields(noteId, fields);
@@ -119,6 +133,25 @@ async function upsertAnkiNote(
 		await syncNoteTags(client, noteId, tags, deckTagsEnabled);
 	};
 
+	const findAndOverwriteDuplicate = async (): Promise<number | null> => {
+		const query = `deck:"${escapeAnkiQueryValue(deckName)}" note:"${escapeAnkiQueryValue(modelName)}"`;
+		const candidates = await client.findNotes(query);
+		if (candidates.length === 0) {
+			return null;
+		}
+		const details = await client.notesInfo(candidates);
+		const front = fields[FIELD_FRONT] ?? '';
+		const match =
+			details.find((note) => (note.fields[FIELD_FRONT] ?? '') === front) ??
+			details.find((note) => (note.fields.Front ?? '') === front) ??
+			details[0];
+		if (!match) {
+			return null;
+		}
+		await applyUpdate(match.noteId);
+		return match.noteId;
+	};
+
 	if (input.noteId !== undefined) {
 		const existing = await client.notesInfo([input.noteId]);
 		if (existing.length > 0) {
@@ -128,35 +161,35 @@ async function upsertAnkiNote(
 		// Stale <!--ID--> — recreate below.
 	}
 
-	const createdId = await client.addNote({
-		deckName,
-		modelName,
-		fields,
-		tags,
-		allowDuplicate: false,
-	});
+	let createdId: number | null = null;
+	try {
+		createdId = await client.addNote({
+			deckName,
+			modelName,
+			fields,
+			tags,
+			allowDuplicate: false,
+		});
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : String(error);
+		const looksDuplicate = /duplicate|重复/i.test(msg);
+		if (!looksDuplicate) {
+			throw new Error(`Anki addNote 失败：${msg}`);
+		}
+	}
 
 	if (createdId != null) {
 		return { noteId: createdId, created: true };
 	}
 
-	// Duplicate in deck: find matching front field and overwrite.
-	const query = `deck:"${escapeAnkiQueryValue(deckName)}" note:"${escapeAnkiQueryValue(modelName)}"`;
-	const candidates = await client.findNotes(query);
-	if (candidates.length > 0) {
-		const details = await client.notesInfo(candidates);
-		const front = fields[FIELD_FRONT] ?? '';
-		const match =
-			details.find((note) => (note.fields[FIELD_FRONT] ?? '') === front) ??
-			details.find((note) => (note.fields.Front ?? '') === front) ??
-			details[0];
-		if (match) {
-			await applyUpdate(match.noteId);
-			return { noteId: match.noteId, created: false };
-		}
+	const overwritten = await findAndOverwriteDuplicate();
+	if (overwritten != null) {
+		return { noteId: overwritten, created: false };
 	}
 
-	throw new Error('addNote 返回 null（可能重复），且未能定位已有笔记以覆盖');
+	throw new Error(
+		'addNote 失败（可能内容重复），且未能定位已有笔记以覆盖。可在 Anki 中删除重复笔记后重试。',
+	);
 }
 
 /**
@@ -229,7 +262,7 @@ export async function syncCardToAnki(
 		);
 	}
 
-	// Still ensure the active model exists (create-only if styles already synced).
+	// Existing models must gain the new field names before any note sync.
 	await ensureDeckTemplateModel(client, templateId, style, false);
 
 	const deckName = toAnkiDeckName(card.deckPath);
