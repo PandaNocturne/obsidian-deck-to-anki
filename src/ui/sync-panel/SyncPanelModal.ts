@@ -719,7 +719,7 @@ export class SyncPanelModal extends Modal {
 			},
 			allowFileType
 				? undefined
-				: { allowedDeckTypes: ['head', 'card', 'list'] },
+				: { allowedDeckTypes: ['head', 'list', 'card'] },
 		);
 	}
 

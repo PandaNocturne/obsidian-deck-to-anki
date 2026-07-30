@@ -255,7 +255,7 @@ if you want to view the source, please visit the github repository of this plugi
   font-weight: 700;
   letter-spacing: 0.02em;
   line-height: 1.35;
-  text-transform: lowercase;
+  text-transform: capitalize;
 }
 .dta-sync-count {
   flex-shrink: 0;

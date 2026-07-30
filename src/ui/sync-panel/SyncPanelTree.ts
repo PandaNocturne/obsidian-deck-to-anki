@@ -298,6 +298,14 @@ function renderCard(
 		text: card.front,
 	});
 
+	if (card.deckClass === 'card') {
+		row.createSpan({
+			cls: 'dta-sync-type-badge',
+			text: 'card',
+			attr: { title: 'deckClass: card' },
+		});
+	}
+
 	if (card.blockId) {
 		row.createSpan({
 			cls: 'dta-sync-id',
