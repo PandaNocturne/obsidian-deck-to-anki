@@ -476,6 +476,36 @@ if you want to view the source, please visit the github repository of this plugi
   gap: 0.45rem;
   padding-top: 0.1rem;
 }
+.dta-sync-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.15rem 0.05rem 0.05rem;
+}
+.dta-sync-progress.is-hidden {
+  display: none;
+}
+.dta-sync-progress-label {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dta-sync-progress-track {
+  height: 0.4rem;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+.dta-sync-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  transition: width 0.12s ease;
+}
 .dta-sync-footer-btn {
   padding: 0.58rem 0.75rem;
   border: 1px solid var(--background-modifier-border);

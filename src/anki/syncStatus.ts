@@ -40,6 +40,33 @@ export interface SyncStatusPrefetchResult {
 	deletedCount: number;
 }
 
+/** Progress callback for status check UI (panel bar / notice). */
+export interface SyncStatusProgress {
+	current: number;
+	total: number;
+	label: string;
+}
+
+export type SyncStatusProgressHandler = (
+	progress: SyncStatusProgress,
+) => void | Promise<void>;
+
+async function reportProgress(
+	onProgress: SyncStatusProgressHandler | undefined,
+	current: number,
+	total: number,
+	label: string,
+): Promise<void> {
+	if (!onProgress) {
+		return;
+	}
+	await onProgress({
+		current: Math.min(current, total),
+		total: Math.max(total, 1),
+		label,
+	});
+}
+
 function resolveDeckTemplate(
 	yamlValue: string | undefined,
 	fallback: DeckTemplateId,
@@ -443,44 +470,88 @@ async function stampCardStatuses(
 	client: AnkiConnectClient,
 	cards: CardNode[],
 	ankiById: AnkiNoteCache,
+	options?: {
+		onProgress?: SyncStatusProgressHandler;
+		/** Base offset into overall progress. */
+		progressOffset?: number;
+		progressTotal?: number;
+		progressLabel?: (done: number, cardTotal: number) => string;
+	},
 ): Promise<void> {
-	for (const card of cards) {
+	const offset = options?.progressOffset ?? 0;
+	const total = options?.progressTotal ?? cards.length;
+	const labelFn =
+		options?.progressLabel ??
+		((done, cardTotal) => `比对卡片 ${done}/${cardTotal}`);
+
+	for (let i = 0; i < cards.length; i++) {
+		const card = cards[i]!;
 		if (card.noteId === undefined) {
 			card.syncStatus = 'unsynced';
-			continue;
-		}
-		const remote = ankiById.get(card.noteId);
-		if (!remote) {
-			card.syncStatus = 'unsynced';
-			continue;
+		} else {
+			const remote = ankiById.get(card.noteId);
+			if (!remote) {
+				card.syncStatus = 'unsynced';
+			} else {
+				try {
+					const local = await buildComparablePayload(
+						app,
+						settings,
+						card,
+					);
+					const inExpectedDeck =
+						(
+							await client.findNotes(
+								`nid:${card.noteId} deck:"${escapeAnkiQueryValue(local.deckName)}"`,
+							)
+						).length > 0;
+					card.syncStatus = payloadsMatch(local, {
+						...remote,
+						inExpectedDeck,
+					})
+						? 'synced'
+						: 'modified';
+				} catch {
+					card.syncStatus = 'modified';
+				}
+			}
 		}
 
-		try {
-			const local = await buildComparablePayload(app, settings, card);
-			const inExpectedDeck =
-				(
-					await client.findNotes(
-						`nid:${card.noteId} deck:"${escapeAnkiQueryValue(local.deckName)}"`,
-					)
-				).length > 0;
-			card.syncStatus = payloadsMatch(local, {
-				...remote,
-				inExpectedDeck,
-			})
-				? 'synced'
-				: 'modified';
-		} catch {
-			card.syncStatus = 'modified';
-		}
+		await reportProgress(
+			options?.onProgress,
+			offset + i + 1,
+			total,
+			labelFn(i + 1, cards.length),
+		);
 	}
 }
 
 async function loadAnkiNotesById(
 	client: AnkiConnectClient,
 	noteIds: number[],
+	options?: {
+		onProgress?: SyncStatusProgressHandler;
+		progressOffset?: number;
+		progressTotal?: number;
+	},
 ): Promise<AnkiNoteCache> {
 	const ankiById: AnkiNoteCache = new Map();
 	const CHUNK = 50;
+	const offset = options?.progressOffset ?? 0;
+	const total = options?.progressTotal ?? Math.max(1, Math.ceil(noteIds.length / CHUNK));
+	let chunkIndex = 0;
+	const chunkCount = Math.max(1, Math.ceil(noteIds.length / CHUNK) || 1);
+
+	if (noteIds.length === 0) {
+		await reportProgress(
+			options?.onProgress,
+			offset + 1,
+			total,
+			'拉取 Anki 笔记…',
+		);
+		return ankiById;
+	}
+
 	for (let i = 0; i < noteIds.length; i += CHUNK) {
 		const chunk = noteIds.slice(i, i + CHUNK);
 		const infos = await client.notesInfo(chunk);
@@ -491,6 +562,13 @@ async function loadAnkiNotesById(
 				modelName: info.modelName,
 			});
 		}
+		chunkIndex += 1;
+		await reportProgress(
+			options?.onProgress,
+			offset + chunkIndex,
+			total,
+			`拉取 Anki 笔记 ${chunkIndex}/${chunkCount}`,
+		);
 	}
 	return ankiById;
 }
@@ -503,6 +581,7 @@ export async function prefetchSyncStatusForCards(
 	app: App,
 	settings: DeckToAnkiSettings,
 	cards: CardNode[],
+	onProgress?: SyncStatusProgressHandler,
 ): Promise<SyncStatusPrefetchResult> {
 	if (cards.length === 0) {
 		return { ankiOnline: true, deletedCount: 0 };
@@ -511,6 +590,14 @@ export async function prefetchSyncStatusForCards(
 	const client = new AnkiConnectClient(
 		() => settings.ankiConnectUrl || 'http://127.0.0.1:8765',
 	);
+
+	const fetchSteps = Math.max(1, Math.ceil(
+		cards.filter((c) => c.noteId !== undefined).length / 50,
+	));
+	const total = 1 + fetchSteps + cards.length;
+	let step = 0;
+
+	await reportProgress(onProgress, ++step, total, '连接 Anki…');
 
 	try {
 		await client.ping();
@@ -533,8 +620,18 @@ export async function prefetchSyncStatusForCards(
 				.filter((id): id is number => id !== undefined),
 		),
 	];
-	const ankiById = await loadAnkiNotesById(client, noteIds);
-	await stampCardStatuses(app, settings, client, cards, ankiById);
+	const ankiById = await loadAnkiNotesById(client, noteIds, {
+		onProgress,
+		progressOffset: step,
+		progressTotal: total,
+	});
+	step += fetchSteps;
+
+	await stampCardStatuses(app, settings, client, cards, ankiById, {
+		onProgress,
+		progressOffset: step,
+		progressTotal: total,
+	});
 	return { ankiOnline: true, deletedCount: 0 };
 }
 
@@ -546,6 +643,7 @@ export async function prefetchSyncStatus(
 	app: App,
 	settings: DeckToAnkiSettings,
 	root: DeckNode,
+	onProgress?: SyncStatusProgressHandler,
 ): Promise<SyncStatusPrefetchResult> {
 	clearDeletedChildren(root);
 	const localCards = collectLocalCards(root);
@@ -553,6 +651,26 @@ export async function prefetchSyncStatus(
 	const client = new AnkiConnectClient(
 		() => settings.ankiConnectUrl || 'http://127.0.0.1:8765',
 	);
+
+	const localIds = new Set<number>();
+	for (const card of localCards) {
+		if (card.noteId !== undefined) {
+			localIds.add(card.noteId);
+		}
+	}
+
+	const deckPaths = new Set<string>();
+	collectDeckPaths(root, deckPaths);
+	const sortedDeckPaths = [...deckPaths].sort(
+		(a, b) => b.split('::').length - a.split('::').length,
+	);
+	const scanSteps = sortedDeckPaths.length * DECK_TEMPLATE_IDS.length;
+	const fetchSteps = Math.max(1, Math.ceil(localIds.size / 50) || 1);
+	// Orphan fetch unknown yet; reserve a soft tail of 1 then expand.
+	let total = 1 + fetchSteps + scanSteps + localCards.length + 1;
+	let step = 0;
+
+	await reportProgress(onProgress, ++step, total, '连接 Anki…');
 
 	try {
 		await client.ping();
@@ -569,24 +687,16 @@ export async function prefetchSyncStatus(
 		};
 	}
 
-	const localIds = new Set<number>();
-	for (const card of localCards) {
-		if (card.noteId !== undefined) {
-			localIds.add(card.noteId);
-		}
-	}
-
-	const ankiById = await loadAnkiNotesById(client, [...localIds]);
-
-	const deckPaths = new Set<string>();
-	collectDeckPaths(root, deckPaths);
-	// Prefer deepest deck path when attributing orphan notes.
-	const sortedDeckPaths = [...deckPaths].sort(
-		(a, b) => b.split('::').length - a.split('::').length,
-	);
+	const ankiById = await loadAnkiNotesById(client, [...localIds], {
+		onProgress,
+		progressOffset: step,
+		progressTotal: total,
+	});
+	step += fetchSteps;
 
 	const ankiIdsInView = new Set<number>();
 	const noteDeckHint = new Map<number, string>();
+	let scanDone = 0;
 
 	for (const deckPath of sortedDeckPaths) {
 		for (const model of DECK_TEMPLATE_IDS) {
@@ -598,20 +708,36 @@ export async function prefetchSyncStatus(
 					noteDeckHint.set(id, deckPath);
 				}
 			}
+			scanDone += 1;
+			await reportProgress(
+				onProgress,
+				step + scanDone,
+				total,
+				`扫描牌组 ${scanDone}/${Math.max(scanSteps, 1)}`,
+			);
 		}
 	}
+	step += scanSteps;
 
-	await stampCardStatuses(app, settings, client, localCards, ankiById);
+	await stampCardStatuses(app, settings, client, localCards, ankiById, {
+		onProgress,
+		progressOffset: step,
+		progressTotal: total,
+	});
+	step += localCards.length;
 
 	const orphanIds = [...ankiIdsInView].filter((id) => !localIds.has(id));
 	let deletedCount = 0;
 	const CHUNK = 50;
+	const orphanChunks = Math.max(1, Math.ceil(orphanIds.length / CHUNK) || 1);
+	total = step + orphanChunks;
 
 	if (orphanIds.length > 0) {
 		const orphanInfos: Array<{
 			noteId: number;
 			fields: Record<string, string>;
 		}> = [];
+		let orphanChunk = 0;
 		for (let i = 0; i < orphanIds.length; i += CHUNK) {
 			const chunk = orphanIds.slice(i, i + CHUNK);
 			const infos = await client.notesInfo(chunk);
@@ -621,6 +747,13 @@ export async function prefetchSyncStatus(
 					fields: info.fields,
 				});
 			}
+			orphanChunk += 1;
+			await reportProgress(
+				onProgress,
+				step + orphanChunk,
+				total,
+				`检查仅 Anki 存在 ${orphanChunk}/${orphanChunks}`,
+			);
 		}
 
 		for (const info of orphanInfos) {
@@ -644,9 +777,14 @@ export async function prefetchSyncStatus(
 			parent.children.push(phantom);
 			deletedCount += 1;
 		}
+		step += orphanChunks;
+	} else {
+		await reportProgress(onProgress, total, total, '整理结果…');
+		step = total;
 	}
 
 	recountLocalCards(root);
+	await reportProgress(onProgress, total, total, '检测完成');
 	return { ankiOnline: true, deletedCount };
 }
 

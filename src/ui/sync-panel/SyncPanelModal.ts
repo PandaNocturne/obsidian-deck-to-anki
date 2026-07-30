@@ -131,6 +131,9 @@ export class SyncPanelModal extends Modal {
 	private refreshBtnEl!: HTMLButtonElement;
 	private updateBtnEl!: HTMLButtonElement;
 	private forceBtnEl!: HTMLButtonElement;
+	private progressEl!: HTMLElement;
+	private progressLabelEl!: HTMLElement;
+	private progressBarEl!: HTMLElement;
 
 	constructor(plugin: DeckToAnkiPlugin) {
 		super(plugin.app);
@@ -267,6 +270,20 @@ export class SyncPanelModal extends Modal {
 		const bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
 		this.treeHostEl = bodyEl.createDiv({ cls: 'dta-sync-tree-host' });
 
+		this.progressEl = contentEl.createDiv({
+			cls: 'dta-sync-progress is-hidden',
+		});
+		this.progressLabelEl = this.progressEl.createDiv({
+			cls: 'dta-sync-progress-label',
+			text: '',
+		});
+		const track = this.progressEl.createDiv({
+			cls: 'dta-sync-progress-track',
+		});
+		this.progressBarEl = track.createDiv({
+			cls: 'dta-sync-progress-bar',
+		});
+
 		const footer = contentEl.createDiv({ cls: 'dta-sync-footer' });
 
 		const forceBtn = footer.createEl('button', {
@@ -316,7 +333,28 @@ export class SyncPanelModal extends Modal {
 	private clearBusy(): void {
 		this.busy = null;
 		this.busyNodeId = null;
+		this.hidePanelProgress();
 		this.applyBusyChrome();
+	}
+
+	private setPanelProgress(
+		current: number,
+		total: number,
+		label: string,
+	): void {
+		const safeTotal = Math.max(total, 1);
+		const ratio = Math.max(0, Math.min(1, current / safeTotal));
+		this.progressEl.removeClass('is-hidden');
+		this.progressLabelEl.setText(
+			`${label} · ${Math.round(ratio * 100)}%`,
+		);
+		this.progressBarEl.style.width = `${(ratio * 100).toFixed(1)}%`;
+	}
+
+	private hidePanelProgress(): void {
+		this.progressEl.addClass('is-hidden');
+		this.progressBarEl.style.width = '0%';
+		this.progressLabelEl.setText('');
 	}
 
 	/** Keep toolbar / footer / row sync buttons disabled + spinning until done. */
@@ -469,6 +507,13 @@ export class SyncPanelModal extends Modal {
 					this.app,
 					this.plugin.settings,
 					cards,
+					async (p) => {
+						this.setPanelProgress(p.current, p.total, p.label);
+						options?.progress?.setMessage(p.label);
+						await new Promise<void>((resolve) => {
+							window.setTimeout(resolve, 0);
+						});
+					},
 				);
 				this.state.restoreLeafSelection(
 					this.viewRoot,
@@ -1146,11 +1191,20 @@ export class SyncPanelModal extends Modal {
 
 		const progress = new ProgressNotice('正在对照 Anki 检测同步状态…');
 		this.statusEl.setText('正在对照 Anki 检测同步状态…');
+		this.setPanelProgress(0, 1, '准备检测…');
 		try {
 			const result = await prefetchSyncStatus(
 				this.app,
 				this.plugin.settings,
 				this.viewRoot,
+				async (p) => {
+					this.setPanelProgress(p.current, p.total, p.label);
+					progress.setMessage(p.label);
+					this.statusEl.setText(p.label);
+					await new Promise<void>((resolve) => {
+						window.setTimeout(resolve, 0);
+					});
+				},
 			);
 			this.ankiStatusChecked = true;
 			this.state.reselectByStatus(this.viewRoot);
@@ -1168,6 +1222,7 @@ export class SyncPanelModal extends Modal {
 					: '';
 			const summary = `状态检测完成${hint}`;
 			this.statusEl.setText(summary);
+			this.setPanelProgress(1, 1, summary);
 			progress.finish(summary);
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
