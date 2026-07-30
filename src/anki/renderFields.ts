@@ -1,4 +1,5 @@
 import { App, Component, MarkdownRenderer } from 'obsidian';
+import { extractMathForAnki, injectAnkiMath } from './mathForAnki';
 import {
 	dedupeMediaAssets,
 	preprocessMarkdownMedia,
@@ -37,8 +38,8 @@ export async function renderMarkdownToHtml(
 }
 
 /**
- * Render a card field for Anki: rewrite local media to Anki filenames
- * and collect assets for storeMediaFile.
+ * Render a card field for Anki: rewrite local media to Anki filenames,
+ * convert `$`/`$$` math to Anki MathJax delimiters, and collect assets.
  */
 export async function renderFieldWithMedia(
 	app: App,
@@ -51,8 +52,15 @@ export async function renderFieldWithMedia(
 	}
 
 	const pre = await preprocessMarkdownMedia(app, text, sourcePath);
-	const rawHtml = await renderMarkdownToHtml(app, pre.markdown, sourcePath);
-	const post = await processRenderedHtmlMedia(app, rawHtml, sourcePath);
+	// Extract math before Obsidian render so Anki gets \( \) / \[ \] (not Obsidian MathJax DOM).
+	const prepared = extractMathForAnki(pre.markdown);
+	const rawHtml = await renderMarkdownToHtml(
+		app,
+		prepared.markdown,
+		sourcePath,
+	);
+	const withMath = injectAnkiMath(rawHtml, prepared.slots);
+	const post = await processRenderedHtmlMedia(app, withMath, sourcePath);
 	return {
 		html: post.html,
 		assets: dedupeMediaAssets([...pre.assets, ...post.assets]),
