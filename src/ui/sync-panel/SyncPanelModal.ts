@@ -29,12 +29,20 @@ import {
 	type SyncStatusTreeSnapshot,
 } from '../../anki/syncStatus';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
-import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
+import { App, MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
 import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
 import { ProgressNotice } from './progressNotice';
+
+export interface SyncPanelUIOptions {
+	/** Show Cancel in the footer (modal). Default false. */
+	showCancel?: boolean;
+	/** Close host when opening plugin settings (modal). Default false. */
+	closeOnOpenSettings?: boolean;
+	onRequestClose?: () => void;
+}
 
 interface SessionDeckSettings {
 	deckType: DeckType;
@@ -106,8 +114,15 @@ function findChildNoteNode(
 	return walk(root);
 }
 
-export class SyncPanelModal extends Modal {
+/**
+ * Sync panel UI shared by modal and right-sidebar ItemView.
+ * Does not touch vault files beyond the existing sync write paths.
+ */
+export class SyncPanelUI {
 	private readonly plugin: DeckToAnkiPlugin;
+	private readonly app: App;
+	private readonly options: SyncPanelUIOptions;
+	private hostEl!: HTMLElement;
 	private readonly state = new SyncPanelState();
 	/** Current-tab single note parse; null on all/archived forest views. */
 	private parsed: ParsedHeadFile | null = null;
@@ -141,9 +156,10 @@ export class SyncPanelModal extends Modal {
 	private progressLabelEl!: HTMLElement;
 	private progressBarEl!: HTMLElement;
 
-	constructor(plugin: DeckToAnkiPlugin) {
-		super(plugin.app);
+	constructor(plugin: DeckToAnkiPlugin, options: SyncPanelUIOptions = {}) {
 		this.plugin = plugin;
+		this.app = plugin.app;
+		this.options = options;
 		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
 		this.state.cardLevel = this.defaultCardHeadingLevel();
 	}
@@ -156,15 +172,14 @@ export class SyncPanelModal extends Modal {
 			: DEFAULT_CARD_HEADING_LEVEL;
 	}
 
-	onOpen(): void {
-		this.modalEl.addClass('dta-sync-modal');
-		this.titleEl.setText('Deck To Anki');
+	mount(hostEl: HTMLElement): void {
+		this.hostEl = hostEl;
 		this.renderChrome();
 		void this.reload();
 	}
 
-	onClose(): void {
-		this.contentEl.empty();
+	unmount(): void {
+		this.hostEl?.empty();
 		this.parsed = null;
 		this.viewRoot = null;
 		this.forestItems = [];
@@ -176,7 +191,7 @@ export class SyncPanelModal extends Modal {
 	}
 
 	private renderChrome(): void {
-		const { contentEl } = this;
+		const contentEl = this.hostEl;
 		contentEl.empty();
 
 		const tabs = contentEl.createDiv({ cls: 'dta-sync-tabs' });
@@ -264,7 +279,9 @@ export class SyncPanelModal extends Modal {
 			if (this.busy) {
 				return;
 			}
-			this.close();
+			if (this.options.closeOnOpenSettings) {
+				this.options.onRequestClose?.();
+			}
 			const setting = (
 				this.app as unknown as {
 					setting: { open: () => void; openTabById: (id: string) => void };
@@ -313,13 +330,15 @@ export class SyncPanelModal extends Modal {
 			void this.handleUpdate();
 		});
 
-		const cancelBtn = footer.createEl('button', {
-			cls: 'dta-sync-footer-btn',
-			text: 'Cancel',
-		});
-		cancelBtn.addEventListener('click', () => {
-			this.close();
-		});
+		if (this.options.showCancel) {
+			const cancelBtn = footer.createEl('button', {
+				cls: 'dta-sync-footer-btn',
+				text: 'Cancel',
+			});
+			cancelBtn.addEventListener('click', () => {
+				this.options.onRequestClose?.();
+			});
+		}
 	}
 
 	private setBusy(
@@ -1598,6 +1617,30 @@ export class SyncPanelModal extends Modal {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		const file = view?.file;
 		return file instanceof TFile ? file : null;
+	}
+}
+
+export class SyncPanelModal extends Modal {
+	private ui: SyncPanelUI | null = null;
+
+	constructor(private readonly plugin: DeckToAnkiPlugin) {
+		super(plugin.app);
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('dta-sync-modal');
+		this.titleEl.setText('Deck To Anki');
+		this.ui = new SyncPanelUI(this.plugin, {
+			showCancel: true,
+			closeOnOpenSettings: true,
+			onRequestClose: () => this.close(),
+		});
+		this.ui.mount(this.contentEl);
+	}
+
+	onClose(): void {
+		this.ui?.unmount();
+		this.ui = null;
 	}
 }
 

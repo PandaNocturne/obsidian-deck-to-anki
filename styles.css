@@ -57,6 +57,24 @@ if you want to view the source, please visit the github repository of this plugi
   font-weight: 600;
   letter-spacing: -0.01em;
 }
+.dta-sync-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  height: 100%;
+  padding: 0.55rem 0.65rem 0.75rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.dta-sync-view .dta-sync-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+.dta-sync-view .dta-sync-footer {
+  flex-shrink: 0;
+}
 .dta-sync-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
