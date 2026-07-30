@@ -206,7 +206,7 @@ function renderDeck(
 
 	const syncBtn = row.createEl('button', {
 		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '同步牌组', title: '同步牌组（尚未实现）' },
+		attr: { 'aria-label': '同步牌组', title: '同步到 Anki' },
 	});
 	setIcon(syncBtn, 'refresh-cw');
 	syncBtn.addEventListener('click', (evt) => {
@@ -363,7 +363,7 @@ function renderCard(
 
 	const syncBtn = row.createEl('button', {
 		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '同步卡片', title: '同步卡片（尚未实现）' },
+		attr: { 'aria-label': '同步卡片', title: '同步到 Anki' },
 	});
 	setIcon(syncBtn, 'refresh-cw');
 	syncBtn.addEventListener('click', (evt) => {

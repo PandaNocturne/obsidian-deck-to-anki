@@ -13,6 +13,28 @@ if you want to view the source, please visit the github repository of this plugi
 .deck-to-anki-settings .setting-item {
   border-top: none;
 }
+.deck-to-anki-settings h3 {
+  margin: 1.25rem 0 0.5rem;
+}
+.deck-to-anki-settings h4 {
+  margin: 0.85rem 0 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.95em;
+}
+.deck-to-anki-settings .dta-setting-textarea {
+  flex-direction: column;
+  align-items: stretch;
+}
+.deck-to-anki-settings .dta-setting-textarea .setting-item-control {
+  width: 100%;
+}
+.deck-to-anki-settings .dta-template-textarea {
+  width: 100%;
+  min-height: 6.5rem;
+  font-family: var(--font-monospace);
+  font-size: 0.85em;
+  line-height: 1.4;
+}
 .deck-to-anki-modal {
   padding: 1rem;
 }

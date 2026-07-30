@@ -1,6 +1,11 @@
 import { Modal, Notice, Setting, TFile } from 'obsidian';
 import type DeckToAnkiPlugin from '../../../main';
 import {
+	DECK_TEMPLATE_IDS,
+	DECK_TEMPLATE_LABELS,
+	type DeckTemplateId,
+} from '../../anki/templates';
+import {
 	clearAllDeckYaml,
 	upsertDeckYaml,
 } from '../../domain/head/frontmatter';
@@ -15,6 +20,8 @@ export interface FileDeckSettingsValues {
 	deckName: string;
 	deckLevel: number;
 	deckStatus: boolean;
+	/** Anki note type stored as YAML deckTemplate. */
+	deckTemplate: DeckTemplateId;
 }
 
 export interface FileDeckSettingsOptions {
@@ -68,6 +75,9 @@ export class FileDeckSettingsModal extends Modal {
 		if (!this.allowedDeckTypes.includes(this.draft.deckType)) {
 			this.draft.deckType = types[0] ?? 'head';
 		}
+		if (!DECK_TEMPLATE_IDS.includes(this.draft.deckTemplate)) {
+			this.draft.deckTemplate = 'ob-deck-basic';
+		}
 	}
 
 	onOpen(): void {
@@ -95,7 +105,8 @@ export class FileDeckSettingsModal extends Modal {
 			this.draft.deckType !== this.initial.deckType ||
 			this.draft.deckName !== this.initial.deckName ||
 			this.draft.deckLevel !== this.initial.deckLevel ||
-			this.draft.deckStatus !== this.initial.deckStatus
+			this.draft.deckStatus !== this.initial.deckStatus ||
+			this.draft.deckTemplate !== this.initial.deckTemplate
 		);
 	}
 
@@ -124,7 +135,7 @@ export class FileDeckSettingsModal extends Modal {
 		if (this.draft.deckType === 'none') {
 			contentEl.createEl('p', {
 				cls: 'dta-file-settings-hint',
-				text: 'Save 将删除：deckType、deckName、deckLevel、deckStatus、deckFile。',
+				text: 'Save 将删除：deckType、deckName、deckLevel、deckStatus、deckFile、deckTemplate。',
 			});
 		} else {
 			new Setting(contentEl)
@@ -156,6 +167,22 @@ export class FileDeckSettingsModal extends Modal {
 							});
 					});
 			}
+
+			new Setting(contentEl)
+				.setName('Deck template')
+				.setDesc(
+					'YAML: deckTemplate — 同步到 Anki 时使用的笔记类型',
+				)
+				.addDropdown((dropdown) => {
+					for (const id of DECK_TEMPLATE_IDS) {
+						dropdown.addOption(id, DECK_TEMPLATE_LABELS[id]);
+					}
+					dropdown
+						.setValue(this.draft.deckTemplate)
+						.onChange((value) => {
+							this.draft.deckTemplate = value as DeckTemplateId;
+						});
+				});
 
 			new Setting(contentEl)
 				.setName('Deck status')
@@ -222,6 +249,7 @@ export class FileDeckSettingsModal extends Modal {
 					? this.draft.deckLevel
 					: undefined,
 			deckStatus: this.draft.deckStatus,
+			deckTemplate: this.draft.deckTemplate,
 		});
 
 		if (next === content) {

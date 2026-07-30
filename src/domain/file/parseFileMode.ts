@@ -330,6 +330,7 @@ export async function parseFileMode(
 		yamlDeckType: meta.deckType,
 		yamlDeckName: meta.deckName,
 		yamlDeckLevel: meta.deckLevel,
+		yamlDeckTemplate: meta.deckTemplate,
 		deckStatus: meta.deckStatus,
 		root,
 		warnings,

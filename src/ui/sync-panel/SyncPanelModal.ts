@@ -1,4 +1,4 @@
-import { clearAllDeckYaml, upsertDeckYaml, parseFrontmatter } from '../../domain/head/frontmatter';
+import { parseFrontmatter } from '../../domain/head/frontmatter';
 import type {
 	CardNode,
 	DeckNode,
@@ -9,6 +9,11 @@ import { parseNoteFile } from '../../domain/parseNote';
 import { resolveDeckFileParent } from '../../domain/resolveWikiFile';
 import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
 import type DeckToAnkiPlugin from '../../../main';
+import {
+	DECK_TEMPLATE_IDS,
+	type DeckTemplateId,
+} from '../../anki/templates';
+import { syncCardToAnki, syncNodesToAnki } from '../../anki/syncCard';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
@@ -21,6 +26,17 @@ interface SessionDeckSettings {
 	deckName: string;
 	deckLevel: number;
 	deckStatus: boolean;
+	deckTemplate: DeckTemplateId;
+}
+
+function asDeckTemplateId(
+	value: string | undefined,
+	fallback: DeckTemplateId,
+): DeckTemplateId {
+	if (value && DECK_TEMPLATE_IDS.includes(value as DeckTemplateId)) {
+		return value as DeckTemplateId;
+	}
+	return fallback;
 }
 
 /** Note-level child under a file parent (deck or card leaf). */
@@ -210,6 +226,7 @@ export class SyncPanelModal extends Modal {
 		const updateBtn = footer.createEl('button', {
 			cls: 'dta-sync-footer-btn mod-success',
 			text: 'Update',
+			attr: { title: '将勾选的卡片同步到 Anki' },
 		});
 		updateBtn.addEventListener('click', () => {
 			void this.handleUpdate();
@@ -488,11 +505,7 @@ export class SyncPanelModal extends Modal {
 					this.renderBody();
 				},
 				onSyncStub: (node) => {
-					const label =
-						node.kind === 'deck'
-							? `牌组「${node.name}」`
-							: `卡片「${node.front}」`;
-					new Notice(`${label}：同步功能尚未实现`);
+					void this.handleSyncNode(node);
 				},
 				onDeckSettings: (deck) => {
 					void this.openDeckSettings(deck);
@@ -516,6 +529,37 @@ export class SyncPanelModal extends Modal {
 			},
 			treeOptions,
 		);
+	}
+
+	private async handleSyncNode(node: DeckNode | CardNode): Promise<void> {
+		const label =
+			node.kind === 'deck'
+				? `牌组「${node.name}」`
+				: `卡片「${(node.front || '').slice(0, 32)}」`;
+		this.statusEl.setText(`${label}：同步中…`);
+		try {
+			const result = await syncNodesToAnki(
+				this.app,
+				this.plugin.settings,
+				node,
+			);
+			if (result.ok === 0 && result.fail === 0) {
+				new Notice(`${label}：没有可同步的卡片`);
+				this.statusEl.setText('没有可同步的卡片');
+				return;
+			}
+			const summary = `${label}：成功 ${result.ok}，失败 ${result.fail}`;
+			new Notice(summary);
+			this.statusEl.setText(summary);
+			if (result.warnings.length > 0) {
+				console.warn('[Deck To Anki] sync warnings', result.warnings);
+			}
+			await this.reload({ preserveTab: true });
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			new Notice(`同步失败：${msg}`);
+			this.statusEl.setText(`同步失败：${msg}`);
+		}
 	}
 
 	private async openCard(card: CardNode): Promise<void> {
@@ -641,10 +685,15 @@ export class SyncPanelModal extends Modal {
 		}
 
 		const fallbackLevel = this.defaultCardHeadingLevel();
+		const fallbackTemplate = this.plugin.settings.deckTemplate;
 		let deckType: DeckType = deck.deckType ?? this.state.parseType ?? 'head';
 		let deckName = '';
 		let deckLevel = fallbackLevel;
 		let deckStatus = noteParsed?.deckStatus ?? false;
+		let deckTemplate = asDeckTemplateId(
+			noteParsed?.yamlDeckTemplate,
+			fallbackTemplate,
+		);
 
 		if (isCurrentRoot && this.parsed) {
 			if (this.sessionOverride) {
@@ -652,11 +701,16 @@ export class SyncPanelModal extends Modal {
 				deckName = this.sessionOverride.deckName;
 				deckLevel = this.sessionOverride.deckLevel;
 				deckStatus = this.sessionOverride.deckStatus;
+				deckTemplate = this.sessionOverride.deckTemplate;
 			} else {
 				deckType = this.state.parseType;
 				deckName = this.parsed.yamlDeckName ?? '';
 				deckLevel = this.state.cardLevel;
 				deckStatus = this.parsed.deckStatus;
+				deckTemplate = asDeckTemplateId(
+					this.parsed.yamlDeckTemplate,
+					fallbackTemplate,
+				);
 			}
 		} else {
 			const childOverride = this.childOverrides.get(file.path);
@@ -665,6 +719,7 @@ export class SyncPanelModal extends Modal {
 				deckName = childOverride.deckName;
 				deckLevel = childOverride.deckLevel;
 				deckStatus = childOverride.deckStatus;
+				deckTemplate = childOverride.deckTemplate;
 			} else {
 				const content = await this.app.vault.cachedRead(file);
 				const meta = parseFrontmatter(content);
@@ -672,6 +727,10 @@ export class SyncPanelModal extends Modal {
 				deckName = meta.deckName ?? '';
 				deckLevel = meta.deckLevel ?? fallbackLevel;
 				deckStatus = meta.deckStatus;
+				deckTemplate = asDeckTemplateId(
+					meta.deckTemplate,
+					fallbackTemplate,
+				);
 				if (
 					deckType === 'file' &&
 					!isForestNoteRoot &&
@@ -686,7 +745,7 @@ export class SyncPanelModal extends Modal {
 		openFileDeckSettings(
 			this.plugin,
 			file,
-			{ deckType, deckName, deckLevel, deckStatus },
+			{ deckType, deckName, deckLevel, deckStatus, deckTemplate },
 			async (values, result) => {
 				if (values.deckType === 'none') {
 					if (result.persisted) {
@@ -709,6 +768,7 @@ export class SyncPanelModal extends Modal {
 							deckName: values.deckName,
 							deckLevel: values.deckLevel,
 							deckStatus: values.deckStatus,
+							deckTemplate: values.deckTemplate,
 						};
 						new Notice(
 							`已切换解析为 ${values.deckType}（未写入 YAML，可用 Update/Save 保存）`,
@@ -722,6 +782,7 @@ export class SyncPanelModal extends Modal {
 						deckName: values.deckName,
 						deckLevel: values.deckLevel,
 						deckStatus: values.deckStatus,
+						deckTemplate: values.deckTemplate,
 					});
 					new Notice(
 						`子笔记已按 ${values.deckType} 解析（未写入 YAML）`,
@@ -736,51 +797,77 @@ export class SyncPanelModal extends Modal {
 		);
 	}
 
+	/** Collect checked leaf cards under the current view tree. */
+	private collectSelectedCards(): CardNode[] {
+		if (!this.viewRoot) {
+			return [];
+		}
+		const out: CardNode[] = [];
+		const walk = (node: DeckNode | CardNode) => {
+			if (node.kind === 'card') {
+				if (this.state.isSelected(node.id)) {
+					out.push(node);
+				}
+				return;
+			}
+			for (const child of node.children) {
+				walk(child);
+			}
+		};
+		walk(this.viewRoot);
+		return out;
+	}
+
+	/** Sync checked cards to Anki (Update button). */
 	private async handleUpdate(): Promise<void> {
-		if (this.state.tab !== 'current') {
-			new Notice('请在「当前卡片」中更新打开笔记的 YAML');
+		const cards = this.collectSelectedCards();
+		if (cards.length === 0) {
+			new Notice('请先勾选要同步的卡片');
+			this.statusEl.setText('未勾选卡片');
 			return;
 		}
 
-		const file = this.getActiveMarkdownFile();
-		if (!file) {
-			new Notice('请先打开一个 Markdown 笔记');
-			return;
-		}
+		this.statusEl.setText(`正在同步 ${cards.length} 张卡片到 Anki…`);
+		let ok = 0;
+		let fail = 0;
+		const warnings: string[] = [];
 
-		const content = await this.app.vault.read(file);
-		const meta = parseFrontmatter(content);
-		// Preserve file-mode child → parent index; rewrite in quoted form on Update.
-		const preservedDeckFile = meta.deckFile;
-
-		const deckType = this.state.parseType;
-		const deckName =
-			this.sessionOverride?.deckName?.trim() ||
-			this.parsed?.yamlDeckName?.trim() ||
-			'';
-		const deckStatus =
-			this.sessionOverride?.deckStatus ??
-			this.parsed?.deckStatus ??
-			false;
-
-		// Full overwrite: clear all deck* keys, then write current panel values.
-		const cleared = clearAllDeckYaml(content);
-		const next = upsertDeckYaml(cleared, {
-			deckType,
-			deckName: deckName || undefined,
-			deckLevel: deckType === 'head' ? this.state.cardLevel : undefined,
-			deckStatus,
-			deckFile: preservedDeckFile ?? null,
+		// Bottom-to-top within each file so ID writeback keeps line indexes valid.
+		cards.sort((a, b) => {
+			const pathCmp = (a.sourceFilePath ?? '').localeCompare(
+				b.sourceFilePath ?? '',
+			);
+			if (pathCmp !== 0) {
+				return pathCmp;
+			}
+			return b.lineStart - a.lineStart;
 		});
 
-		if (next === content) {
-			new Notice('YAML 已是最新');
-		} else {
-			await this.app.vault.modify(file, next);
-			new Notice('已覆盖写入 YAML：deckType / deckName / deckLevel / deckStatus');
+		for (const card of cards) {
+			try {
+				const result = await syncCardToAnki(
+					this.app,
+					this.plugin.settings,
+					card,
+				);
+				ok += 1;
+				if (result.warning) {
+					warnings.push(result.warning);
+				}
+			} catch (error) {
+				fail += 1;
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				warnings.push(`「${card.front.slice(0, 24)}」: ${msg}`);
+			}
 		}
 
-		this.sessionOverride = null;
+		const summary = `Anki 同步：成功 ${ok}，失败 ${fail}`;
+		new Notice(summary);
+		this.statusEl.setText(summary);
+		if (warnings.length > 0) {
+			console.warn('[Deck To Anki] Update sync warnings', warnings);
+		}
 		await this.reload({ preserveTab: true });
 	}
 

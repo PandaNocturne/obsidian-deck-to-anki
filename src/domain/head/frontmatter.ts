@@ -1,3 +1,7 @@
+import {
+	DECK_TEMPLATE_IDS,
+	type DeckTemplateId,
+} from '../../anki/templates';
 import type { DeckType } from './types';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
@@ -10,6 +14,7 @@ const ALL_DECK_YAML_KEYS = new Set([
 	'deckLevel',
 	'deckStatus',
 	'deckFile',
+	'deckTemplate',
 ]);
 
 export interface FrontmatterMeta {
@@ -23,6 +28,8 @@ export interface FrontmatterMeta {
 	 * Normalized as `[[basename]]`.
 	 */
 	deckFile?: string;
+	/** Anki note type: ob-deck-basic | ob-deck-basic++ */
+	deckTemplate?: DeckTemplateId;
 	warnings: string[];
 }
 
@@ -112,6 +119,7 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 	let deckLevel: number | undefined;
 	let deckStatus = false;
 	let deckFile: string | undefined;
+	let deckTemplate: DeckTemplateId | undefined;
 
 	for (const rawLine of body.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -160,10 +168,24 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 			} else if (value) {
 				warnings.push(`无效 deckFile: ${value}`);
 			}
+		} else if (key === 'deckTemplate') {
+			if (DECK_TEMPLATE_IDS.includes(value as DeckTemplateId)) {
+				deckTemplate = value as DeckTemplateId;
+			} else if (value) {
+				warnings.push(`未知 deckTemplate: ${value}`);
+			}
 		}
 	}
 
-	return { deckType, deckName, deckLevel, deckStatus, deckFile, warnings };
+	return {
+		deckType,
+		deckName,
+		deckLevel,
+		deckStatus,
+		deckFile,
+		deckTemplate,
+		warnings,
+	};
 }
 
 export interface UpsertDeckYamlProps {
@@ -178,6 +200,8 @@ export interface UpsertDeckYamlProps {
 	 * omit to leave unchanged.
 	 */
 	deckFile?: string | null;
+	/** Anki note type written as YAML deckTemplate. `null` removes the key. */
+	deckTemplate?: DeckTemplateId | null;
 }
 
 function applyFrontmatterUpdates(
@@ -255,7 +279,7 @@ function stripEmptyFrontmatter(content: string): string {
 
 /**
  * Remove all deck-related YAML properties (deckType / deckName / deckLevel /
- * deckStatus / deckFile). Drops empty frontmatter block.
+ * deckStatus / deckFile / deckTemplate). Drops empty frontmatter block.
  */
 export function clearAllDeckYaml(content: string): string {
 	const next = applyFrontmatterUpdates(
@@ -296,6 +320,14 @@ export function upsertDeckYaml(
 	}
 	if (!trimmedName) {
 		removeKeys.add('deckName');
+	}
+
+	if (props.deckTemplate !== undefined) {
+		if (props.deckTemplate === null) {
+			removeKeys.add('deckTemplate');
+		} else {
+			updates.deckTemplate = props.deckTemplate;
+		}
 	}
 
 	if (props.deckFile !== undefined) {

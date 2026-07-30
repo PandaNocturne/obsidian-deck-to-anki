@@ -1,8 +1,8 @@
 import { addIcon, Plugin } from 'obsidian';
 import { registerCommands } from './src/commands/registerCommands';
 import {
-	DEFAULT_SETTINGS,
 	DeckToAnkiSettingTab,
+	mergeSettings,
 	type DeckToAnkiSettings,
 } from './src/settings';
 import { ANKI_ICON_ID, ANKI_ICON_SVG } from './src/ui/ankiIcon';
@@ -26,9 +26,7 @@ export default class DeckToAnkiPlugin extends Plugin {
 	onunload() { }
 
 	async loadSettings() {
-		this.settings = Object.assign(
-			{},
-			DEFAULT_SETTINGS,
+		this.settings = mergeSettings(
 			(await this.loadData()) as Partial<DeckToAnkiSettings>,
 		);
 	}

@@ -68,6 +68,8 @@ export interface ParsedHeadFile {
 	yamlDeckType?: DeckType;
 	yamlDeckName?: string;
 	yamlDeckLevel?: number;
+	/** YAML deckTemplate (Anki note type), if any. */
+	yamlDeckTemplate?: string;
 	/** YAML deckStatus: true = archived, false = learning. */
 	deckStatus: boolean;
 	root: DeckNode;
