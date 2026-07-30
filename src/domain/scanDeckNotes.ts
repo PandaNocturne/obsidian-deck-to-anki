@@ -2,7 +2,7 @@ import type { App, TFile } from 'obsidian';
 import { collectWikiLinks } from './file/parseFileMode';
 import { recountCards } from './head/buildHeadTree';
 import { parseFrontmatter } from './head/frontmatter';
-import type { DeckNode, ParsedHeadFile } from './head/types';
+import type { CardNode, DeckNode, ParsedHeadFile } from './head/types';
 import { parseNoteFile } from './parseNote';
 
 export type VaultDeckScanMode = 'active' | 'archived';
@@ -156,9 +156,23 @@ export async function parseVaultDeckForest(
 		headingLevel: 0,
 		lineStart: -1,
 		cardCount: 0,
-		children: items.map((item) => item.root),
+		children: [],
 		sourceFilePath: undefined,
 	};
+
+	for (const item of items) {
+		// Card notes are leaves (no nested deck) in forest views too.
+		if (item.deckType === 'card') {
+			const card = item.root.children.find(
+				(child): child is CardNode => child.kind === 'card',
+			);
+			if (card) {
+				root.children.push(card);
+			}
+			continue;
+		}
+		root.children.push(item.root);
+	}
 	recountCards(root);
 
 	return { root, items, warnings };

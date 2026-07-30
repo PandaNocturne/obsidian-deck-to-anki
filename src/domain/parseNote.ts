@@ -1,4 +1,5 @@
 import type { App, TFile } from 'obsidian';
+import { parseCardFile } from './card/parseCardFile';
 import { parseFileMode } from './file/parseFileMode';
 import { parseFrontmatter } from './head/frontmatter';
 import { parseHeadFile } from './head/parseHeadFile';
@@ -58,8 +59,15 @@ export async function parseNoteFile(
 		});
 	}
 
+	if (deckType === 'card') {
+		return parseCardFile(file.path, content, {
+			deckType: 'card',
+			deckLevel,
+		});
+	}
+
 	return parseHeadFile(file.path, content, {
-		deckType,
+		deckType: 'head',
 		deckLevel,
 	});
 }

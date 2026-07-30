@@ -92,6 +92,10 @@ export class SyncPanelState {
 				return true;
 			}
 			for (const child of node.children) {
+				if (child.id === targetId) {
+					path.push(...nextTrail);
+					return true;
+				}
 				if (child.kind === 'deck' && walk(child, nextTrail)) {
 					return true;
 				}

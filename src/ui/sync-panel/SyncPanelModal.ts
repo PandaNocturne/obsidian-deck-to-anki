@@ -22,23 +22,31 @@ interface SessionDeckSettings {
 	deckStatus: boolean;
 }
 
-/** Note-level deck under a file parent (has deckType + matching source path). */
-function findChildNoteDeck(
+/** Note-level child under a file parent (deck or card leaf). */
+function findChildNoteNode(
 	root: DeckNode,
 	childFilePath: string,
-): DeckNode | null {
+): DeckNode | CardNode | null {
 	for (const child of root.children) {
-		if (
-			child.kind === 'deck' &&
-			child.sourceFilePath === childFilePath &&
-			child.deckType
-		) {
+		if (child.sourceFilePath !== childFilePath) {
+			continue;
+		}
+		if (child.kind === 'card' && child.deckClass === 'card') {
+			return child;
+		}
+		if (child.kind === 'deck' && child.deckType) {
 			return child;
 		}
 	}
-	const walk = (node: DeckNode): DeckNode | null => {
+	const walk = (node: DeckNode): DeckNode | CardNode | null => {
 		for (const child of node.children) {
-			if (child.kind !== 'deck') {
+			if (child.kind === 'card') {
+				if (
+					child.sourceFilePath === childFilePath &&
+					child.deckClass === 'card'
+				) {
+					return child;
+				}
 				continue;
 			}
 			if (
@@ -311,12 +319,17 @@ export class SyncPanelModal extends Modal {
 		this.forestItems = [parsed];
 		this.forestWarnings = parsed.warnings;
 
-		const focusDeck = focusChildPath
-			? findChildNoteDeck(parsed.root, focusChildPath)
+		const focusNode = focusChildPath
+			? findChildNoteNode(parsed.root, focusChildPath)
 			: null;
-		this.focusChildLabel = focusDeck?.name ?? null;
+		this.focusChildLabel =
+			focusNode?.kind === 'deck'
+				? focusNode.name
+				: focusNode?.kind === 'card'
+					? focusNode.front
+					: null;
 
-		if (focusChildPath && !focusDeck) {
+		if (focusChildPath && !focusNode) {
 			this.focusChildLabel = null;
 			this.forestWarnings = [
 				...this.forestWarnings,
@@ -333,7 +346,7 @@ export class SyncPanelModal extends Modal {
 				(useSessionOnParseTarget
 					? this.sessionOverride?.deckLevel
 					: undefined) ?? parsed.deckLevel,
-			selectOnly: focusDeck ?? undefined,
+			selectOnly: focusNode ?? undefined,
 		});
 	}
 
@@ -413,34 +426,10 @@ export class SyncPanelModal extends Modal {
 				this.parsed?.deckType ??
 				this.state.parseType ??
 				('head' as DeckType),
-			showRootMeta: !isForest,
-			skipRootRow: isForest,
+			showRootMeta: !isForest && this.parsed?.deckType !== 'card',
+			// Forest + standalone card: no synthetic / nested deck chrome.
+			skipRootRow: isForest || this.parsed?.deckType === 'card',
 		};
-
-		if (!isForest && this.parsed?.deckType === 'card') {
-			renderSyncPanelTree(
-				this.treeHostEl,
-				this.viewRoot,
-				this.state,
-				{
-					onToggleCollapse: () => undefined,
-					onToggleSelect: () => undefined,
-					onSyncStub: () => undefined,
-					onDeckSettings: (deck) => {
-						void this.openDeckSettings(deck);
-					},
-					onDeckOpen: (deck) => {
-						void this.openDeck(deck);
-					},
-				},
-				treeOptions,
-			);
-			this.treeHostEl.createDiv({
-				cls: 'dta-sync-empty',
-				text: 'card 解析尚未实现。点根牌组设置修改 deckType。',
-			});
-			return;
-		}
 
 		if (
 			this.viewRoot.cardCount === 0 &&
@@ -473,7 +462,9 @@ export class SyncPanelModal extends Modal {
 						? '未找到关联笔记或子笔记中无卡片。在正文添加 [[笔记]] 链接。'
 						: this.parsed?.deckType === 'list'
 							? '未识别到一级列表项。标题用于分组，- / * / 1. 一级列表为卡片，次级列表为反面。'
-							: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
+							: this.parsed?.deckType === 'card'
+								? '未识别到卡片。去除 YAML 后，用单独一行的 --- 分隔正面与反面。'
+								: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
 			});
 			return;
 		}
@@ -500,6 +491,9 @@ export class SyncPanelModal extends Modal {
 				},
 				onDeckSettings: (deck) => {
 					void this.openDeckSettings(deck);
+				},
+				onCardSettings: (card) => {
+					void this.openCardNoteSettings(card);
 				},
 				onCardOpen: (card) => {
 					void this.openCard(card);
@@ -535,6 +529,12 @@ export class SyncPanelModal extends Modal {
 				'',
 				false,
 			);
+			return;
+		}
+
+		// Card mode: one file one card — open the note (front is not a heading).
+		if (card.deckClass === 'card') {
+			await this.app.workspace.openLinkText(filePath, '', false);
 			return;
 		}
 
@@ -575,6 +575,32 @@ export class SyncPanelModal extends Modal {
 		return (
 			this.forestItems.find((item) => item.root.id === deck.id) ?? null
 		);
+	}
+
+	/** Card-mode note leaf → YAML settings (no nested deck row). */
+	private async openCardNoteSettings(card: CardNode): Promise<void> {
+		if (
+			this.state.tab === 'current' &&
+			this.parsed?.deckType === 'card' &&
+			card.sourceFilePath === this.parsed.filePath
+		) {
+			await this.openDeckSettings(this.parsed.root);
+			return;
+		}
+
+		const synthetic: DeckNode = {
+			kind: 'deck',
+			id: `deck:card-note:${card.sourceFilePath ?? card.id}`,
+			name: card.front.slice(0, 40) || 'card',
+			deckPath: card.deckPath,
+			headingLevel: 0,
+			lineStart: card.lineStart,
+			cardCount: 1,
+			children: [],
+			sourceFilePath: card.sourceFilePath,
+			deckType: 'card',
+		};
+		await this.openDeckSettings(synthetic);
 	}
 
 	private async openDeckSettings(deck: DeckNode): Promise<void> {

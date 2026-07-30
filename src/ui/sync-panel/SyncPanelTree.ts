@@ -13,6 +13,11 @@ export interface SyncPanelTreeHandlers {
 	onSyncStub: (node: DeckNode | CardNode) => void;
 	/** Open YAML settings for a note-level deck (root or file-mode child). */
 	onDeckSettings?: (deck: DeckNode) => void;
+	/**
+	 * YAML settings for a card-mode note leaf (no nested deck).
+	 * Prefer this over treating the card as a deck row.
+	 */
+	onCardSettings?: (card: CardNode) => void;
 	onCardOpen?: (card: CardNode) => void;
 	/** Double-click deck title → open source file or heading. */
 	onDeckOpen?: (deck: DeckNode) => void;
@@ -24,8 +29,8 @@ export interface SyncPanelTreeOptions {
 	/** When false, root row omits type badge / settings (forest views). Default true. */
 	showRootMeta?: boolean;
 	/**
-	 * Forest views: do not render the synthetic root row (e.g. 「所有卡片」);
-	 * only its deck children appear at the first level. Cards at that level are skipped.
+	 * Do not render the synthetic root row; show its children at the first level.
+	 * Used by forest views and standalone card-mode notes (card is a leaf, no deck row).
 	 */
 	skipRootRow?: boolean;
 }
@@ -41,12 +46,14 @@ export function renderSyncPanelTree(
 	const list = container.createDiv({ cls: 'dta-sync-tree' });
 
 	if (options.skipRootRow) {
+		let cardSibling = 0;
 		for (const child of root.children) {
-			if (child.kind !== 'deck') {
-				// Nested cards must not appear at the first directory level.
-				continue;
+			if (child.kind === 'deck') {
+				renderDeck(list, child, state, handlers, options, 0, null);
+			} else {
+				cardSibling += 1;
+				renderCard(list, child, state, handlers, cardSibling);
 			}
-			renderDeck(list, child, state, handlers, options, 0, null);
 		}
 		return;
 	}
@@ -71,7 +78,7 @@ function resolveCardIcon(deckClass: DeckClass): string {
 		case 'list':
 			return 'list';
 		case 'card':
-			return 'credit-card';
+			return 'sticky-note';
 		case 'head':
 		default:
 			return 'heading';
@@ -300,6 +307,21 @@ function renderCard(
 		row.createSpan({
 			cls: 'dta-sync-id',
 			text: `ID ${card.noteId}`,
+		});
+	}
+
+	if (card.deckClass === 'card' && handlers.onCardSettings) {
+		const settingsBtn = row.createEl('button', {
+			cls: 'dta-sync-action clickable-icon',
+			attr: {
+				'aria-label': '牌组 YAML 设置',
+				title: '牌组 YAML 设置',
+			},
+		});
+		setIcon(settingsBtn, 'settings');
+		settingsBtn.addEventListener('click', (evt) => {
+			evt.stopPropagation();
+			handlers.onCardSettings?.(card);
 		});
 	}
 

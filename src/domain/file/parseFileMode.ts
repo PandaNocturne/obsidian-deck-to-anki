@@ -26,6 +26,7 @@ import type {
 	ParsedHeadFile,
 } from '../head/types';
 import { buildListTree } from '../list/buildListTree';
+import { buildCardNode } from '../card/buildCardTree';
 
 const WIKILINK_REGEXP = /(!)?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g;
 
@@ -263,20 +264,19 @@ export async function parseFileMode(
 		}
 
 		if (resolved.deckType === 'card') {
-			warnings.push(`${childName}: card 解析尚未实现，已跳过卡片`);
-			const emptyChild: DeckNode = {
-				kind: 'deck',
-				id: `deck:file:${filePath}:${dest.path}:${ref.lineIndex}`,
-				name: childName,
-				deckPath: `${root.deckPath}::${childName}`,
-				headingLevel: 0,
-				lineStart: ref.lineIndex,
-				cardCount: 0,
-				children: [],
-				sourceFilePath: dest.path,
-				deckType: resolved.deckType,
-			};
-			root.children.push(emptyChild);
+			const parsedCard = buildCardNode({
+				filePath: dest.path,
+				content: childContent,
+				deckName: childName,
+				parentDeckPath: root.deckPath,
+			});
+			warnings.push(
+				...parsedCard.warnings.map((w) => `${childName}: ${w}`),
+			);
+			if (parsedCard.card) {
+				// Card notes are leaves under the file deck — no nested deck row.
+				root.children.push(parsedCard.card);
+			}
 			continue;
 		}
 
