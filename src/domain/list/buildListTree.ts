@@ -181,6 +181,7 @@ export function buildListTree(options: BuildListTreeOptions): {
 			lineStart: cardFrontLine,
 			lineEnd: Math.max(cardFrontLine, endLineExclusive - 1),
 			deckPath: parent.deckPath,
+			deckClass: 'list',
 			noteId: idMarker?.noteId,
 			idMarker: idMarker ?? undefined,
 			blockId,

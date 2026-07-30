@@ -9,6 +9,7 @@ import { parseNoteFile } from '../../domain/parseNote';
 import { resolveDeckFileParent } from '../../domain/resolveWikiFile';
 import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
 import type DeckToAnkiPlugin from '../../../main';
+import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
 import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
@@ -82,7 +83,7 @@ export class SyncPanelModal extends Modal {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
-		this.state.cardLevel = this.plugin.settings.cardHeadingLevel || 4;
+		this.state.cardLevel = DEFAULT_CARD_HEADING_LEVEL;
 	}
 
 	onOpen(): void {
@@ -264,8 +265,8 @@ export class SyncPanelModal extends Modal {
 				? this.sessionOverride?.deckLevel
 				: undefined,
 			fallbackDeckType: this.plugin.settings.defaultDeckType || 'head',
-			fallbackDeckLevel: this.plugin.settings.cardHeadingLevel || 4,
-			childCardHeadingLevel: this.plugin.settings.cardHeadingLevel || 4,
+			fallbackDeckLevel: DEFAULT_CARD_HEADING_LEVEL,
+			childCardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
 			childTypeOverrides,
 		});
 
@@ -317,8 +318,8 @@ export class SyncPanelModal extends Modal {
 		const result = await parseVaultDeckForest(this.app, {
 			mode,
 			includeFolders: this.plugin.settings.includeFolders ?? [],
-			fallbackDeckLevel: this.plugin.settings.cardHeadingLevel || 4,
-			childCardHeadingLevel: this.plugin.settings.cardHeadingLevel || 4,
+			fallbackDeckLevel: DEFAULT_CARD_HEADING_LEVEL,
+			childCardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
 		});
 
 		this.parsed = null;
@@ -328,7 +329,7 @@ export class SyncPanelModal extends Modal {
 		this.focusChildLabel = null;
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
-			cardLevel: this.plugin.settings.cardHeadingLevel || 4,
+			cardLevel: DEFAULT_CARD_HEADING_LEVEL,
 		});
 	}
 
@@ -390,10 +391,9 @@ export class SyncPanelModal extends Modal {
 				('head' as DeckType),
 			showRootMeta: !isForest,
 			skipRootRow: isForest,
-			iconMode: this.plugin.settings.deckTreeIconMode ?? 'unified',
 		};
 
-		if (!isForest && this.parsed?.deckType === 'basic') {
+		if (!isForest && this.parsed?.deckType === 'card') {
 			renderSyncPanelTree(
 				this.treeHostEl,
 				this.viewRoot,
@@ -413,7 +413,7 @@ export class SyncPanelModal extends Modal {
 			);
 			this.treeHostEl.createDiv({
 				cls: 'dta-sync-empty',
-				text: 'basic 解析尚未实现。点根牌组设置修改 deckType。',
+				text: 'card 解析尚未实现。点根牌组设置修改 deckType。',
 			});
 			return;
 		}
@@ -501,7 +501,7 @@ export class SyncPanelModal extends Modal {
 		}
 
 		// List cards jump via Obsidian block id only.
-		if (card.headingLevel === 0) {
+		if (card.deckClass === 'list') {
 			if (!card.blockId) {
 				new Notice('列表项无块 ID（^id），无法跳转（仅可解析）');
 				return;
@@ -577,7 +577,7 @@ export class SyncPanelModal extends Modal {
 			return;
 		}
 
-		const fallbackLevel = this.plugin.settings.cardHeadingLevel || 4;
+		const fallbackLevel = DEFAULT_CARD_HEADING_LEVEL;
 		let deckType: DeckType = deck.deckType ?? this.state.parseType ?? 'head';
 		let deckName = '';
 		let deckLevel = fallbackLevel;
@@ -669,7 +669,7 @@ export class SyncPanelModal extends Modal {
 			},
 			allowFileType
 				? undefined
-				: { allowedDeckTypes: ['head', 'basic', 'list'] },
+				: { allowedDeckTypes: ['head', 'card', 'list'] },
 		);
 	}
 

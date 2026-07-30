@@ -1,4 +1,7 @@
-export type DeckType = 'head' | 'basic' | 'file' | 'list';
+export type DeckType = 'head' | 'card' | 'file' | 'list';
+
+/** How a card was parsed (drives tree icon). Not the same as note-level file mode. */
+export type DeckClass = 'head' | 'list' | 'card';
 
 export type SyncPanelNodeKind = 'deck' | 'card';
 
@@ -17,6 +20,8 @@ export interface CardNode {
 	lineStart: number;
 	lineEnd: number;
 	deckPath: string;
+	/** Parse class for icon: head / list / card. */
+	deckClass: DeckClass;
 	noteId?: number;
 	idMarker?: IdMarkerInfo;
 	/** Obsidian block id (`^xxx`) for list cards; required to jump. */

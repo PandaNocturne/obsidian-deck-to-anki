@@ -223,6 +223,7 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 				lineStart: heading.lineIndex,
 				lineEnd: blockEnd,
 				deckPath: parent.deckPath,
+				deckClass: 'head',
 				noteId: idMarker?.noteId,
 				idMarker: idMarker ?? undefined,
 				sourceFilePath: filePath,

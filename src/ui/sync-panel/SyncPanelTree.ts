@@ -1,6 +1,10 @@
 import { setIcon } from 'obsidian';
-import type { CardNode, DeckNode, DeckType } from '../../domain/head/types';
-import type { DeckTreeIconMode } from '../../settings';
+import type {
+	CardNode,
+	DeckClass,
+	DeckNode,
+	DeckType,
+} from '../../domain/head/types';
 import type { SyncPanelState } from './SyncPanelState';
 
 export interface SyncPanelTreeHandlers {
@@ -24,8 +28,6 @@ export interface SyncPanelTreeOptions {
 	 * only its deck children appear at the first level. Cards at that level are skipped.
 	 */
 	skipRootRow?: boolean;
-	/** Deck lead icon style from plugin settings. Default unified. */
-	iconMode?: DeckTreeIconMode;
 }
 
 export function renderSyncPanelTree(
@@ -52,52 +54,28 @@ export function renderSyncPanelTree(
 	renderDeck(list, root, state, handlers, options, 0, null);
 }
 
-/**
- * L1 decks always use layers (fold state by color).
- * Nested unified: circle +/−; nested byType: file / heading / list.
- */
+/** All decks use circle +/− (collapsed +, expanded −). */
 function resolveDeckLeadIcon(
-	deck: DeckNode,
-	depth: number,
 	hasChildren: boolean,
 	collapsed: boolean,
-	iconMode: DeckTreeIconMode,
-): { icon: string; foldable: boolean; useFoldColor: boolean } {
-	if (depth === 0) {
-		return {
-			icon: 'layers',
-			foldable: hasChildren,
-			useFoldColor: true,
-		};
+): string {
+	if (!hasChildren) {
+		return 'minus-circle';
 	}
+	return collapsed ? 'plus-circle' : 'minus-circle';
+}
 
-	if (iconMode === 'unified') {
-		return {
-			icon: hasChildren
-				? collapsed
-					? 'plus-circle'
-					: 'minus-circle'
-				: 'minus-circle',
-			foldable: hasChildren,
-			useFoldColor: false,
-		};
+/** Card icons follow deckClass: head / list / card. */
+function resolveCardIcon(deckClass: DeckClass): string {
+	switch (deckClass) {
+		case 'list':
+			return 'list';
+		case 'card':
+			return 'credit-card';
+		case 'head':
+		default:
+			return 'heading';
 	}
-
-	if (deck.deckType === 'list') {
-		return { icon: 'list', foldable: hasChildren, useFoldColor: true };
-	}
-	if (
-		deck.deckType === 'file' ||
-		deck.id.startsWith('deck:file:') ||
-		deck.deckType === 'head' ||
-		deck.deckType === 'basic'
-	) {
-		return { icon: 'file-text', foldable: hasChildren, useFoldColor: true };
-	}
-	if (deck.headingLevel > 0) {
-		return { icon: 'heading', foldable: hasChildren, useFoldColor: true };
-	}
-	return { icon: 'folder', foldable: hasChildren, useFoldColor: true };
 }
 
 function renderDeck(
@@ -121,14 +99,7 @@ function renderDeck(
 	const badgeType =
 		deck.deckType ?? (isRoot && showRootMeta ? options.parseType : undefined);
 	const showSettings = Boolean(badgeType && handlers.onDeckSettings);
-	const iconMode = options.iconMode ?? 'unified';
-	const lead = resolveDeckLeadIcon(
-		deck,
-		depth,
-		hasChildren,
-		collapsed,
-		iconMode,
-	);
+	const leadIcon = resolveDeckLeadIcon(hasChildren, collapsed);
 
 	const toggleCollapse = (evt: MouseEvent): void => {
 		if (!hasChildren) {
@@ -159,22 +130,18 @@ function renderDeck(
 	const twisty = row.createSpan({
 		cls: 'dta-sync-twisty',
 		attr: {
-			title: lead.foldable
+			title: hasChildren
 				? collapsed
 					? '展开牌组'
 					: '折叠牌组'
 				: '',
 		},
 	});
-	setIcon(twisty, lead.icon);
+	setIcon(twisty, leadIcon);
 	if (!hasChildren) {
 		twisty.addClass('is-empty');
 	} else {
-		if (lead.useFoldColor) {
-			twisty.addClass(collapsed ? 'is-collapsed' : 'is-expanded');
-		} else {
-			twisty.addClass('is-unified');
-		}
+		twisty.addClass('is-unified');
 		twisty.addEventListener('click', toggleCollapse);
 	}
 
@@ -280,7 +247,7 @@ function renderCard(
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
 ): void {
-	const isListCard = card.headingLevel === 0;
+	const isListCard = card.deckClass === 'list';
 	const canJump = !isListCard || Boolean(card.blockId);
 
 	const row = parent.createDiv({
@@ -306,7 +273,7 @@ function renderCard(
 	});
 
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
-	setIcon(icon, isListCard ? 'list' : 'sticky-note');
+	setIcon(icon, resolveCardIcon(card.deckClass));
 
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({

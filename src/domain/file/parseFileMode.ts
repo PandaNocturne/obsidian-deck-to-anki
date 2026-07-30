@@ -116,7 +116,7 @@ interface ResolvedChildMode {
  * Resolve child note deckType:
  * - missing → auto-write YAML deckType: head
  * - file → not allowed for nesting; parse as head (YAML type unchanged)
- * - head / basic / list → use as-is
+ * - head / card / list → use as-is
  * Always ensure deckFile: [[parent]] indexes the file-mode parent.
  */
 async function resolveChildDeckMode(
@@ -262,8 +262,8 @@ export async function parseFileMode(
 			);
 		}
 
-		if (resolved.deckType === 'basic') {
-			warnings.push(`${childName}: basic 解析尚未实现，已跳过卡片`);
+		if (resolved.deckType === 'card') {
+			warnings.push(`${childName}: card 解析尚未实现，已跳过卡片`);
 			const emptyChild: DeckNode = {
 				kind: 'deck',
 				id: `deck:file:${filePath}:${dest.path}:${ref.lineIndex}`,

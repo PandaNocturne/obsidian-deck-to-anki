@@ -26,12 +26,12 @@ export interface FileDeckSettingsResult {
 	persisted: boolean;
 }
 
-const DEFAULT_DECK_TYPES: DeckType[] = ['head', 'basic', 'file', 'list'];
+const DEFAULT_DECK_TYPES: DeckType[] = ['head', 'card', 'file', 'list'];
 
 const DECK_TYPE_LABELS: Record<DeckSettingsType, string> = {
 	none: 'None',
 	head: 'Head',
-	basic: 'Basic',
+	card: 'Card',
 	file: 'File',
 	list: 'List',
 };

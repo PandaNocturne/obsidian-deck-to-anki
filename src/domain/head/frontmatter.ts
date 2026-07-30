@@ -1,7 +1,7 @@
 import type { DeckType } from './types';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
-const DECK_TYPE_VALUES: DeckType[] = ['head', 'basic', 'file', 'list'];
+const DECK_TYPE_VALUES: DeckType[] = ['head', 'card', 'file', 'list'];
 
 /** All YAML keys managed by this plugin. */
 const ALL_DECK_YAML_KEYS = new Set([
