@@ -124,6 +124,8 @@ export class SyncPanelModal extends Modal {
 	private focusChildLabel: string | null = null;
 	/** True after a successful toolbar 检查; statuses survive reload until closed. */
 	private ankiStatusChecked = false;
+	/** Bumps to cancel in-flight background auto-check. */
+	private bgCheckId = 0;
 	/** Blocks overlapping check / sync / reload; drives button loading UI. */
 	private busy: null | 'check' | 'sync' | 'reload' = null;
 	private busyNodeId: string | null = null;
@@ -164,6 +166,7 @@ export class SyncPanelModal extends Modal {
 		this.forestItems = [];
 		this.focusChildLabel = null;
 		this.ankiStatusChecked = false;
+		this.bgCheckId += 1;
 		this.busy = null;
 		this.busyNodeId = null;
 	}
@@ -322,6 +325,8 @@ export class SyncPanelModal extends Modal {
 		if (this.busy) {
 			return false;
 		}
+		// Cancel background auto-check so it won't overwrite UI mid-action.
+		this.bgCheckId += 1;
 		this.busy = kind;
 		this.busyNodeId = nodeId ?? null;
 		this.applyBusyChrome();
@@ -434,6 +439,7 @@ export class SyncPanelModal extends Modal {
 		}
 		// Status check is per view; switching tabs starts without prior colors.
 		this.ankiStatusChecked = false;
+		this.bgCheckId += 1;
 		if (!this.setBusy('reload')) {
 			return;
 		}
@@ -532,6 +538,99 @@ export class SyncPanelModal extends Modal {
 		}
 
 		this.renderBody();
+
+		const skipAutoCheck =
+			this.state.tab !== 'current' ||
+			(options?.recheckKeys?.length ?? 0) > 0;
+		if (!skipAutoCheck) {
+			this.scheduleAutoCheckCurrentNote();
+		}
+	}
+
+	/**
+	 * After current-note tree is painted, optionally refresh Anki status
+	 * in the background (setting: autoCheckCurrentNote).
+	 */
+	private scheduleAutoCheckCurrentNote(): void {
+		if (this.plugin.settings.autoCheckCurrentNote === false) {
+			return;
+		}
+		if (this.state.tab !== 'current' || !this.viewRoot) {
+			return;
+		}
+		if (this.busy) {
+			return;
+		}
+
+		const id = ++this.bgCheckId;
+		window.setTimeout(() => {
+			void this.runBackgroundAutoCheck(id);
+		}, 0);
+	}
+
+	private async runBackgroundAutoCheck(id: number): Promise<void> {
+		if (id !== this.bgCheckId || this.busy) {
+			return;
+		}
+		if (this.state.tab !== 'current' || !this.viewRoot) {
+			return;
+		}
+
+		const cards = this.collectSelectedCards();
+		if (cards.length === 0) {
+			return;
+		}
+
+		this.checkBtnEl.addClass('is-loading');
+		setIcon(this.checkBtnEl, 'loader-circle');
+		this.checkBtnEl.title = '后台检测中…';
+		this.setPanelProgress(0, 1, `后台检测 ${cards.length} 张…`);
+		this.statusEl.setText(`后台检测 ${cards.length} 张勾选卡片…`);
+
+		try {
+			const result = await prefetchSyncStatusForCards(
+				this.app,
+				this.plugin.settings,
+				cards,
+				async (p) => {
+					if (id !== this.bgCheckId) {
+						return;
+					}
+					this.setPanelProgress(p.current, p.total, p.label);
+					this.statusEl.setText(p.label);
+					await new Promise<void>((resolve) => {
+						window.setTimeout(resolve, 0);
+					});
+				},
+			);
+
+			if (id !== this.bgCheckId || this.busy) {
+				return;
+			}
+
+			this.ankiStatusChecked = true;
+			// Keep checkboxes; only refresh status colors on checked cards.
+			this.renderBody();
+
+			if (result.warning) {
+				this.statusEl.setText(result.warning);
+			} else {
+				this.statusEl.setText(
+					`后台检测完成（${cards.length} 张）`,
+				);
+			}
+		} catch (error) {
+			if (id !== this.bgCheckId) {
+				return;
+			}
+			const msg = error instanceof Error ? error.message : String(error);
+			this.statusEl.setText(`后台检测失败：${msg}`);
+		} finally {
+			if (id === this.bgCheckId && !this.busy) {
+				this.hidePanelProgress();
+				this.applyBusyChrome();
+			}
+		}
 	}
 
 	private async reloadCurrent(

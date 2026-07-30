@@ -50,6 +50,11 @@ export interface DeckToAnkiSettings {
 	backlinkScheme: BacklinkScheme;
 	/** Frontmatter property for Advanced URI uid. */
 	advUriUidProperty: string;
+	/**
+	 * After parsing the current-note tab, auto-check Anki status in the
+	 * background (tree renders first). Default on.
+	 */
+	autoCheckCurrentNote: boolean;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
@@ -68,6 +73,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	deckBacklinkEnabled: true,
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
+	autoCheckCurrentNote: true,
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -211,6 +217,20 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.ankiConnectUrl =
 							value.trim() || 'http://127.0.0.1:8765';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('打开当前笔记时自动检测')
+			.setDesc(
+				'解析「当前卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片的同步状态。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoCheckCurrentNote !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.autoCheckCurrentNote = value;
 						await this.plugin.saveSettings();
 					}),
 			);

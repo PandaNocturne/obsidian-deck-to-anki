@@ -789,20 +789,24 @@ export async function prefetchSyncStatus(
 }
 
 export function countSyncStatusInDeck(deck: DeckNode): Record<
-	SyncCardStatus,
+	SyncCardStatus | 'pending',
 	number
 > {
-	const counts: Record<SyncCardStatus, number> = {
+	const counts: Record<SyncCardStatus | 'pending', number> = {
 		synced: 0,
 		modified: 0,
 		unsynced: 0,
 		deleted: 0,
+		pending: 0,
 	};
 	const walk = (node: DeckNode) => {
 		for (const child of node.children) {
 			if (child.kind === 'card') {
-				const status = child.syncStatus ?? 'unsynced';
-				counts[status] += 1;
+				if (child.syncStatus === undefined) {
+					counts.pending += 1;
+				} else {
+					counts[child.syncStatus] += 1;
+				}
 			} else if (child.kind === 'deleted-anki') {
 				counts.deleted += 1;
 			} else {

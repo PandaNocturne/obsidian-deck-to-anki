@@ -134,8 +134,9 @@ function statusCheckClass(status: SyncCardStatus | undefined): string {
 		case 'deleted':
 			return 'dta-sync-check--deleted';
 		case 'unsynced':
-		default:
 			return 'dta-sync-check--unsynced';
+		default:
+			return 'dta-sync-check--pending';
 	}
 }
 
@@ -148,19 +149,24 @@ function statusIdClass(status: SyncCardStatus | undefined): string {
 		case 'deleted':
 			return 'dta-sync-id--deleted';
 		case 'unsynced':
-		default:
 			return 'dta-sync-id--unsynced';
+		default:
+			return 'dta-sync-id--pending';
 	}
 }
 
 function renderStatusBadges(
 	parent: HTMLElement,
-	counts: Record<SyncCardStatus, number>,
+	counts: Record<SyncCardStatus | 'pending', number>,
 ): void {
-	const order: Array<{ key: SyncCardStatus; title: string }> = [
+	const order: Array<{
+		key: SyncCardStatus | 'pending';
+		title: string;
+	}> = [
 		{ key: 'synced', title: '已同步' },
 		{ key: 'modified', title: '被修改' },
 		{ key: 'unsynced', title: '未同步' },
+		{ key: 'pending', title: '未检测' },
 		{ key: 'deleted', title: '已删除' },
 	];
 	const host = parent.createSpan({ cls: 'dta-sync-status-badges' });
@@ -506,7 +512,7 @@ function renderCard(
 		}
 	} else if (card.blockId) {
 		row.createSpan({
-			cls: `dta-sync-id ${statusIdClass(card.syncStatus ?? 'unsynced')}`,
+			cls: `dta-sync-id ${statusIdClass(card.syncStatus)}`,
 			text: `^${card.blockId}`,
 		});
 	}
