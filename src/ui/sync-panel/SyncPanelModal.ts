@@ -277,6 +277,7 @@ export class SyncPanelModal extends Modal {
 		if (options?.preserveTab) {
 			this.state.tab = previousTab;
 		}
+		const preserveCollapse = options?.preserveTab === true;
 
 		const file = this.getActiveMarkdownFile();
 		if (this.state.tab === 'current' && !file) {
@@ -287,17 +288,21 @@ export class SyncPanelModal extends Modal {
 		this.statusEl.setText('解析中…');
 
 		if (this.state.tab === 'current') {
-			await this.reloadCurrent(file!);
+			await this.reloadCurrent(file!, { preserveCollapse });
 		} else {
 			await this.reloadForest(
 				this.state.tab === 'archived' ? 'archived' : 'active',
+				{ preserveCollapse },
 			);
 		}
 
 		this.renderBody();
 	}
 
-	private async reloadCurrent(file: TFile): Promise<void> {
+	private async reloadCurrent(
+		file: TFile,
+		options?: { preserveCollapse?: boolean },
+	): Promise<void> {
 		const content = await this.app.vault.read(file);
 		const meta = parseFrontmatter(content);
 
@@ -388,10 +393,14 @@ export class SyncPanelModal extends Modal {
 					? this.sessionOverride?.deckLevel
 					: undefined) ?? parsed.deckLevel,
 			selectOnly: focusNode ?? undefined,
+			preserveCollapse: options?.preserveCollapse === true,
 		});
 	}
 
-	private async reloadForest(mode: 'active' | 'archived'): Promise<void> {
+	private async reloadForest(
+		mode: 'active' | 'archived',
+		options?: { preserveCollapse?: boolean },
+	): Promise<void> {
 		this.sessionOverride = null;
 		const result = await parseVaultDeckForest(this.app, {
 			mode,
@@ -411,6 +420,7 @@ export class SyncPanelModal extends Modal {
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
 			cardLevel: this.defaultCardHeadingLevel(),
+			preserveCollapse: options?.preserveCollapse === true,
 		});
 	}
 

@@ -32,8 +32,14 @@ export class SyncPanelState {
 			cardLevel?: number;
 			/** When set, only this subtree is checked (not the whole tree). */
 			selectOnly?: SyncSelectableNode;
+			/** Keep which decks were expanded across re-parse / sync reload. */
+			preserveCollapse?: boolean;
 		},
 	): void {
+		const expandedIds = options?.preserveCollapse
+			? this.snapshotExpandedDeckIds()
+			: null;
+
 		this.root = root;
 		if (options?.parseType) {
 			this.parseType = options.parseType;
@@ -45,11 +51,37 @@ export class SyncPanelState {
 		this.collapsed.clear();
 		this.collapseAllDecks(root);
 
+		if (expandedIds && expandedIds.size > 0) {
+			for (const id of expandedIds) {
+				this.collapsed.delete(id);
+			}
+		}
+
 		if (options?.selectOnly) {
 			this.selectAll(options.selectOnly);
 		} else {
 			this.selectAll(root);
 		}
+	}
+
+	/** Deck ids that are currently expanded (not in collapsed set). */
+	private snapshotExpandedDeckIds(): Set<string> {
+		const out = new Set<string>();
+		if (!this.root) {
+			return out;
+		}
+		const walk = (node: DeckNode) => {
+			if (!this.collapsed.has(node.id)) {
+				out.add(node.id);
+			}
+			for (const child of node.children) {
+				if (child.kind === 'deck') {
+					walk(child);
+				}
+			}
+		};
+		walk(this.root);
+		return out;
 	}
 
 	/** @deprecated Prefer resetFromTree for multi-file views. */
