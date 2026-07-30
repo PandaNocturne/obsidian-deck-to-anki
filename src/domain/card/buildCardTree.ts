@@ -1,6 +1,7 @@
 import { recountCards } from '../head/buildHeadTree';
 import { findIdMarkerInLines } from '../head/idMarker';
 import type { CardNode, DeckNode } from '../head/types';
+import { collectCardTags } from '../tags';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
 /** Horizontal rule used as front/back separator (not YAML). */
@@ -153,6 +154,7 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		lineEnd,
 		deckPath,
 		deckClass: 'card',
+		tags: collectCardTags([front, backText], content),
 		noteId: idMarker?.noteId,
 		idMarker: idMarker ?? undefined,
 		sourceFilePath: filePath,

@@ -18,6 +18,8 @@ export interface SyncPanelTreeHandlers {
 	 * Prefer this over treating the card as a deck row.
 	 */
 	onCardSettings?: (card: CardNode) => void;
+	/** Preview parsed front / back. */
+	onCardPreview?: (card: CardNode) => void;
 	onCardOpen?: (card: CardNode) => void;
 	/** Double-click deck title → open source file or heading. */
 	onDeckOpen?: (deck: DeckNode) => void;
@@ -306,6 +308,17 @@ function renderCard(
 		});
 	}
 
+	if (card.tags && card.tags.length > 0) {
+		const tagsEl = row.createSpan({ cls: 'dta-sync-card-tags' });
+		for (const tag of card.tags) {
+			tagsEl.createSpan({
+				cls: 'dta-sync-card-tag',
+				text: `#${tag}`,
+				attr: { title: `tag: #${tag}` },
+			});
+		}
+	}
+
 	if (card.blockId) {
 		row.createSpan({
 			cls: 'dta-sync-id',
@@ -330,6 +343,21 @@ function renderCard(
 		settingsBtn.addEventListener('click', (evt) => {
 			evt.stopPropagation();
 			handlers.onCardSettings?.(card);
+		});
+	}
+
+	if (handlers.onCardPreview) {
+		const previewBtn = row.createEl('button', {
+			cls: 'dta-sync-action clickable-icon',
+			attr: {
+				'aria-label': '查看解析效果',
+				title: '查看解析效果',
+			},
+		});
+		setIcon(previewBtn, 'scan-eye');
+		previewBtn.addEventListener('click', (evt) => {
+			evt.stopPropagation();
+			handlers.onCardPreview?.(card);
 		});
 	}
 

@@ -1,5 +1,6 @@
 import { findIdMarkerInLines } from './idMarker';
 import type { CardNode, DeckNode } from './types';
+import { collectCardTags } from '../tags';
 
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
 
@@ -302,6 +303,7 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 				deckPath: parent.deckPath,
 				deckClass: 'head',
 				navTitle: heading.text,
+				tags: collectCardTags([heading.text, front, back]),
 				noteId: idMarker?.noteId,
 				idMarker: idMarker ?? undefined,
 				sourceFilePath: filePath,

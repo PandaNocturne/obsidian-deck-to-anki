@@ -31,6 +31,8 @@ export interface CardNode {
 	idMarker?: IdMarkerInfo;
 	/** Obsidian block id (`^xxx`) for list cards; required to jump. */
 	blockId?: string;
+	/** Obsidian tags from card content (and YAML for card-mode notes), without `#`. */
+	tags?: string[];
 	/** Source note path (file mode child notes). */
 	sourceFilePath?: string;
 }

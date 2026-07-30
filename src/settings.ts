@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
 import type { DeckType } from './domain/head/types';
+import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
 
 /** Fallback when settings / YAML have no deckLevel. */
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
@@ -14,6 +15,8 @@ export interface DeckToAnkiSettings {
 	 * Default false — front is only the body above ---.
 	 */
 	headIncludeTitleInFront: boolean;
+	/** Default Deck View mode: source (raw) or reading (rendered). */
+	deckViewMode: DeckViewMode;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
@@ -22,6 +25,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	defaultDeckType: 'head',
 	cardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
 	headIncludeTitleInFront: false,
+	deckViewMode: 'source',
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -83,6 +87,22 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.headIncludeTitleInFront)
 					.onChange(async (value) => {
 						this.plugin.settings.headIncludeTitleInFront = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('Deck View default')
+			.setDesc(
+				'Default mode when opening Deck View from a card: source (raw markdown) or reading (rendered).',
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('source', '源码')
+					.addOption('reading', '阅读')
+					.setValue(this.plugin.settings.deckViewMode ?? 'source')
+					.onChange(async (value) => {
+						this.plugin.settings.deckViewMode = value as DeckViewMode;
 						await this.plugin.saveSettings();
 					}),
 			);

@@ -11,6 +11,7 @@ import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
 import type DeckToAnkiPlugin from '../../../main';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
+import { openCardPreview } from './CardPreviewModal';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
 import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
@@ -498,6 +499,13 @@ export class SyncPanelModal extends Modal {
 				},
 				onCardSettings: (card) => {
 					void this.openCardNoteSettings(card);
+				},
+				onCardPreview: (card) => {
+					openCardPreview(
+						this.app,
+						card,
+						this.plugin.settings.deckViewMode ?? 'source',
+					);
 				},
 				onCardOpen: (card) => {
 					void this.openCard(card);

@@ -4,6 +4,7 @@ import {
 } from '../head/buildHeadTree';
 import { findIdMarkerInLines, parseIdMarker } from '../head/idMarker';
 import type { CardNode, DeckNode } from '../head/types';
+import { collectCardTags } from '../tags';
 
 const LIST_ITEM_REGEXP = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
@@ -182,6 +183,7 @@ export function buildListTree(options: BuildListTreeOptions): {
 			lineEnd: Math.max(cardFrontLine, endLineExclusive - 1),
 			deckPath: parent.deckPath,
 			deckClass: 'list',
+			tags: collectCardTags([front, backText]),
 			noteId: idMarker?.noteId,
 			idMarker: idMarker ?? undefined,
 			blockId,
