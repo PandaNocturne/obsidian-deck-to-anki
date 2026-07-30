@@ -1,5 +1,8 @@
 import type { App } from 'obsidian';
-import type { DeckToAnkiSettings } from '../settings';
+import {
+	mediaProcessOptionsFromSettings,
+	type DeckToAnkiSettings,
+} from '../settings';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type {
 	CardNode,
@@ -205,9 +208,10 @@ export async function buildComparablePayload(
 	);
 	const deckName = toAnkiDeckName(card.deckPath);
 
+	const mediaOpts = mediaProcessOptionsFromSettings(settings);
 	const [front, back] = await Promise.all([
-		renderFieldWithMedia(app, card.front, filePath),
-		renderFieldWithMedia(app, card.back, filePath),
+		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
+		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
 	]);
 
 	const numbering = resolveNumberingOptions(meta, settings);

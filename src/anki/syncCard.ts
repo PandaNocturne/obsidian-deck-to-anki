@@ -1,5 +1,8 @@
 import type { App } from 'obsidian';
-import type { DeckToAnkiSettings } from '../settings';
+import {
+	mediaProcessOptionsFromSettings,
+	type DeckToAnkiSettings,
+} from '../settings';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode, DeckNode } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
@@ -280,9 +283,10 @@ export async function syncCardToAnki(
 	}
 	await client.createDeck(deckName);
 
+	const mediaOpts = mediaProcessOptionsFromSettings(settings);
 	const [front, back] = await Promise.all([
-		renderFieldWithMedia(app, card.front, filePath),
-		renderFieldWithMedia(app, card.back, filePath),
+		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
+		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
 	]);
 	const media = dedupeMediaAssets([...front.assets, ...back.assets]);
 	if (media.length > 0) {

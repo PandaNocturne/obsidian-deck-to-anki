@@ -5,6 +5,7 @@ import {
 	preprocessMarkdownMedia,
 	processRenderedHtmlMedia,
 	type MediaAsset,
+	type MediaProcessOptions,
 } from './processMedia';
 
 /** Obsidian / plugin chrome injected into rendered code blocks — not for Anki. */
@@ -63,13 +64,19 @@ export async function renderFieldWithMedia(
 	app: App,
 	markdown: string,
 	sourcePath: string,
+	mediaOptions?: MediaProcessOptions,
 ): Promise<{ html: string; assets: MediaAsset[] }> {
 	const text = markdown.trim();
 	if (!text) {
 		return { html: '', assets: [] };
 	}
 
-	const pre = await preprocessMarkdownMedia(app, text, sourcePath);
+	const pre = await preprocessMarkdownMedia(
+		app,
+		text,
+		sourcePath,
+		mediaOptions,
+	);
 	// Extract math before Obsidian render so Anki gets \( \) / \[ \] (not Obsidian MathJax DOM).
 	const prepared = extractMathForAnki(pre.markdown);
 	const rawHtml = await renderMarkdownToHtml(
@@ -78,7 +85,12 @@ export async function renderFieldWithMedia(
 		sourcePath,
 	);
 	const withMath = injectAnkiMath(rawHtml, prepared.slots);
-	const post = await processRenderedHtmlMedia(app, withMath, sourcePath);
+	const post = await processRenderedHtmlMedia(
+		app,
+		withMath,
+		sourcePath,
+		mediaOptions,
+	);
 	return {
 		html: post.html,
 		assets: dedupeMediaAssets([...pre.assets, ...post.assets]),

@@ -65,6 +65,13 @@ export interface DeckToAnkiSettings {
 	 * YAML `cardNumbering`. Default off.
 	 */
 	cardNumberingEnabled: boolean;
+	/**
+	 * Compress raster images when uploading to Anki (vault files unchanged).
+	 * Default on.
+	 */
+	mediaCompressEnabled: boolean;
+	/** JPEG quality 1–100 for Anki upload. Default 75. */
+	mediaCompressQuality: number;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
@@ -86,6 +93,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	autoCheckCurrentNote: true,
 	deckNumberingEnabled: true,
 	cardNumberingEnabled: false,
+	mediaCompressEnabled: true,
+	mediaCompressQuality: 75,
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -120,7 +129,27 @@ export function mergeSettings(
 	if (!DECK_TEMPLATE_IDS.includes(base.deckTemplate)) {
 		base.deckTemplate = 'ob-deck-basic';
 	}
+
+	if (typeof base.mediaCompressEnabled !== 'boolean') {
+		base.mediaCompressEnabled = DEFAULT_SETTINGS.mediaCompressEnabled;
+	}
+	const q = Number(base.mediaCompressQuality);
+	base.mediaCompressQuality = Number.isFinite(q)
+		? Math.min(100, Math.max(1, Math.round(q)))
+		: DEFAULT_SETTINGS.mediaCompressQuality;
+
 	return base;
+}
+
+/** Media options for Anki field render / upload (does not touch vault files). */
+export function mediaProcessOptionsFromSettings(
+	settings: DeckToAnkiSettings,
+): { compressQuality?: number } | undefined {
+	if (settings.mediaCompressEnabled === false) {
+		return undefined;
+	}
+	const q = settings.mediaCompressQuality ?? 75;
+	return { compressQuality: Math.min(100, Math.max(1, Math.round(q))) };
 }
 
 export class DeckToAnkiSettingTab extends PluginSettingTab {
@@ -274,6 +303,47 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName('图片压缩')
+			.setDesc(
+				'上传到 Anki 时压缩位图（PNG/JPEG/WebP/BMP → JPEG）。不修改库内源文件。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.mediaCompressEnabled !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.mediaCompressEnabled = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.mediaCompressEnabled !== false) {
+			new Setting(containerEl)
+				.setName('压缩质量')
+				.setDesc('JPEG 质量 1–100，默认 75。数值越低体积越小、画质越低。')
+				.addSlider((slider) =>
+					slider
+						.setLimits(1, 100, 1)
+						.setValue(this.plugin.settings.mediaCompressQuality ?? 75)
+						.setDynamicTooltip()
+						.onChange(async (value) => {
+							this.plugin.settings.mediaCompressQuality = value;
+							await this.plugin.saveSettings();
+						}),
+				)
+				.addExtraButton((btn) =>
+					btn
+						.setIcon('reset')
+						.setTooltip('恢复默认 75')
+						.onClick(async () => {
+							this.plugin.settings.mediaCompressQuality = 75;
+							await this.plugin.saveSettings();
+							this.display();
+						}),
+				);
+		}
 
 		new Setting(containerEl)
 			.setName('Default deck template')

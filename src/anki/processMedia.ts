@@ -1,4 +1,8 @@
 import { App, TFile } from 'obsidian';
+import {
+	compressImageForAnki,
+	isCompressibleImageExt,
+} from './compressImage';
 
 export interface MediaAsset {
 	kind: 'image' | 'audio';
@@ -9,6 +13,12 @@ export interface MediaAsset {
 	/** Base64 payload fallback for storeMediaFile. */
 	dataBase64?: string;
 	vaultPath: string;
+}
+
+/** Options for Anki media prep (upload payload only; vault files untouched). */
+export interface MediaProcessOptions {
+	/** JPEG quality 1–100 when compressing raster images for Anki. */
+	compressQuality?: number;
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -109,9 +119,13 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 	return btoa(binary);
 }
 
-function ankiFileNameFor(file: TFile): string {
+function ankiFileNameFor(file: TFile, overrideExt?: string): string {
 	// Flatten to a single media name; hash avoids basename collisions.
-	const safeName = file.name.replace(/[\\/:*?"<>|]/g, '_');
+	let safeName = file.name.replace(/[\\/:*?"<>|]/g, '_');
+	if (overrideExt) {
+		const base = safeName.replace(/\.[^.]+$/, '') || safeName;
+		safeName = `${base}.${overrideExt}`;
+	}
 	return `${hashString(file.path)}-${safeName}`;
 }
 
@@ -119,7 +133,32 @@ async function buildAsset(
 	app: App,
 	file: TFile,
 	kind: 'image' | 'audio',
+	options?: MediaProcessOptions,
 ): Promise<MediaAsset> {
+	const quality = options?.compressQuality;
+	const shouldCompress =
+		kind === 'image' &&
+		typeof quality === 'number' &&
+		quality > 0 &&
+		isCompressibleImageExt(file.extension);
+
+	if (shouldCompress) {
+		const data = await app.vault.readBinary(file);
+		const compressed = await compressImageForAnki(
+			data,
+			file.extension,
+			quality,
+		);
+		if (compressed) {
+			return {
+				kind,
+				fileName: ankiFileNameFor(file, compressed.ext),
+				dataBase64: compressed.dataBase64,
+				vaultPath: file.path,
+			};
+		}
+	}
+
 	const fileName = ankiFileNameFor(file);
 	const absolutePath = getFullPath(app, file.path) ?? undefined;
 	if (absolutePath) {
@@ -171,6 +210,7 @@ export async function preprocessMarkdownMedia(
 	app: App,
 	markdown: string,
 	sourcePath: string,
+	options?: MediaProcessOptions,
 ): Promise<{ markdown: string; assets: MediaAsset[] }> {
 	const assets: MediaAsset[] = [];
 
@@ -182,7 +222,7 @@ export async function preprocessMarkdownMedia(
 		if (existing) {
 			return existing;
 		}
-		const asset = await buildAsset(app, file, kind);
+		const asset = await buildAsset(app, file, kind, options);
 		assets.push(asset);
 		return asset;
 	};
@@ -263,6 +303,7 @@ export async function processRenderedHtmlMedia(
 	app: App,
 	html: string,
 	sourcePath: string,
+	options?: MediaProcessOptions,
 ): Promise<{ html: string; assets: MediaAsset[] }> {
 	if (!html.trim()) {
 		return { html, assets: [] };
@@ -281,7 +322,7 @@ export async function processRenderedHtmlMedia(
 			return assets.find((a) => a.vaultPath === file.path) ?? null;
 		}
 		seen.add(file.path);
-		const asset = await buildAsset(app, file, kind);
+		const asset = await buildAsset(app, file, kind, options);
 		assets.push(asset);
 		return asset;
 	};
