@@ -104,29 +104,14 @@ function buildObUri(
 }
 
 /**
- * Advanced URI short scheme: `obsidian://adv-uri`.
- * (Alias of advanced-uri; matches user / docs examples.)
+ * Advanced URI: open note by uid only (file-level jump).
+ * Heading/block anchors temporarily omitted — they break navigation in Anki.
  */
-function buildAdUri(
-	vaultName: string,
-	uid: string,
-	card: CardNode,
-): string {
-	const params: Record<string, string> = {
+function buildAdUri(vaultName: string, uid: string): string {
+	return `obsidian://adv-uri?${buildQuery({
 		vault: vaultName,
 		uid,
-	};
-
-	if (card.deckClass === 'list' && card.blockId) {
-		params.block = card.blockId;
-	} else if (card.deckClass !== 'card') {
-		const heading = (card.navTitle ?? card.front).trim();
-		if (heading) {
-			params.heading = heading;
-		}
-	}
-
-	return `obsidian://adv-uri?${buildQuery(params)}`;
+	})}`;
 }
 
 export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
@@ -142,7 +127,7 @@ export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
 		const uid = readFrontmatterProperty(noteContent, uidProperty);
 		if (uid) {
 			return {
-				uri: buildAdUri(vaultName, uid, card),
+				uri: buildAdUri(vaultName, uid),
 				schemeUsed: 'aduri',
 			};
 		}

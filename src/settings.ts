@@ -15,6 +15,9 @@ import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
 /** Fallback when settings / YAML have no deckLevel. */
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
+/** Bump when shipping new built-in card Front/Back/CSS. */
+export const DECK_TEMPLATE_STYLE_VERSION = 3;
+
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
 	/** Default heading level treated as card front in head mode (YAML deckLevel). */
@@ -32,6 +35,13 @@ export interface DeckToAnkiSettings {
 	deckTemplate: DeckTemplateId;
 	/** Editable Front/Back/CSS per note type. Synced on create or force update. */
 	deckTemplateStyles: Record<DeckTemplateId, DeckTemplateStyle>;
+	/** Tracks built-in style revisions; bump refreshes defaults once. */
+	deckTemplateStyleVersion: number;
+	/**
+	 * Last style version successfully pushed to Anki note types.
+	 * When behind deckTemplateStyleVersion, next sync force-updates templates.
+	 */
+	ankiTemplateSyncedVersion: number;
 	/** Sync Obsidian tags → Anki note tags. */
 	deckTagsEnabled: boolean;
 	/** Write DeckBacklink field (`[deck tree](uri)`). */
@@ -52,6 +62,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	ankiConnectUrl: 'http://127.0.0.1:8765',
 	deckTemplate: 'ob-deck-basic',
 	deckTemplateStyles: createDefaultDeckTemplateStyles(),
+	deckTemplateStyleVersion: DECK_TEMPLATE_STYLE_VERSION,
+	ankiTemplateSyncedVersion: 0,
 	deckTagsEnabled: true,
 	deckBacklinkEnabled: true,
 	backlinkScheme: 'oburi',
@@ -66,18 +78,27 @@ export function mergeSettings(
 ): DeckToAnkiSettings {
 	const base = { ...DEFAULT_SETTINGS, ...(partial ?? {}) };
 	const defaults = createDefaultDeckTemplateStyles();
-	const styles = { ...defaults };
-	for (const id of DECK_TEMPLATE_IDS) {
-		const saved = partial?.deckTemplateStyles?.[id];
-		if (saved) {
-			styles[id] = {
-				front: saved.front ?? defaults[id].front,
-				back: saved.back ?? defaults[id].back,
-				css: saved.css ?? defaults[id].css,
-			};
+	const savedVersion = partial?.deckTemplateStyleVersion ?? 0;
+
+	// One-time refresh when built-in card chrome is upgraded.
+	if (savedVersion < DECK_TEMPLATE_STYLE_VERSION) {
+		base.deckTemplateStyles = defaults;
+		base.deckTemplateStyleVersion = DECK_TEMPLATE_STYLE_VERSION;
+	} else {
+		const styles = { ...defaults };
+		for (const id of DECK_TEMPLATE_IDS) {
+			const saved = partial?.deckTemplateStyles?.[id];
+			if (saved) {
+				styles[id] = {
+					front: saved.front ?? defaults[id].front,
+					back: saved.back ?? defaults[id].back,
+					css: saved.css ?? defaults[id].css,
+				};
+			}
 		}
+		base.deckTemplateStyles = styles;
 	}
-	base.deckTemplateStyles = styles;
+
 	if (!DECK_TEMPLATE_IDS.includes(base.deckTemplate)) {
 		base.deckTemplate = 'ob-deck-basic';
 	}
@@ -260,7 +281,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('强制更新模板到 Anki')
 			.setDesc(
-				'将当前 Front / Back / CSS 写入 Anki 中已有的笔记类型（会覆盖 Anki 侧样式）。',
+				'将当前 Front / Back / CSS 写入 Anki（覆盖已有笔记类型样式）。更新默认样式后请点一次。',
 			)
 			.addButton((btn) =>
 				btn
@@ -271,6 +292,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						try {
 							const result = await forceUpdateDeckTemplate(
 								this.plugin.settings,
+								() => this.plugin.saveSettings(),
 							);
 							if (result === 'created') {
 								new Notice(`已创建笔记类型 ${templateId}`);

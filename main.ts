@@ -26,9 +26,15 @@ export default class DeckToAnkiPlugin extends Plugin {
 	onunload() { }
 
 	async loadSettings() {
-		this.settings = mergeSettings(
-			(await this.loadData()) as Partial<DeckToAnkiSettings>,
-		);
+		const raw = (await this.loadData()) as Partial<DeckToAnkiSettings> | null;
+		this.settings = mergeSettings(raw);
+		// Persist one-time built-in style upgrades.
+		if (
+			(raw?.deckTemplateStyleVersion ?? 0) <
+			this.settings.deckTemplateStyleVersion
+		) {
+			await this.saveSettings();
+		}
 	}
 
 	async saveSettings() {

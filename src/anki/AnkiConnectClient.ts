@@ -26,6 +26,39 @@ export class AnkiConnectClient {
 		return this.invoke<string[]>('modelNames', {});
 	}
 
+	async modelTemplates(
+		modelName: string,
+	): Promise<Record<string, { Front: string; Back: string }>> {
+		const result = await this.invoke<
+			Record<string, { Front?: string; Back?: string }>
+		>('modelTemplates', { modelName });
+		const out: Record<string, { Front: string; Back: string }> = {};
+		for (const [name, sides] of Object.entries(result ?? {})) {
+			out[name] = {
+				Front: sides?.Front ?? '',
+				Back: sides?.Back ?? '',
+			};
+		}
+		return out;
+	}
+
+	async modelFieldNames(modelName: string): Promise<string[]> {
+		const names = await this.invoke<string[]>('modelFieldNames', {
+			modelName,
+		});
+		return Array.isArray(names) ? names : [];
+	}
+
+	async modelFieldAdd(
+		modelName: string,
+		fieldName: string,
+	): Promise<void> {
+		await this.invoke('modelFieldAdd', {
+			modelName,
+			fieldName,
+		});
+	}
+
 	async createDeck(deck: string): Promise<void> {
 		await this.invoke('createDeck', { deck });
 	}
@@ -72,23 +105,20 @@ export class AnkiConnectClient {
 		modelName: string;
 		fields: Record<string, string>;
 		tags: string[];
-	}): Promise<number> {
-		const noteId = await this.invoke<number | null>('addNote', {
+		allowDuplicate?: boolean;
+	}): Promise<number | null> {
+		return this.invoke<number | null>('addNote', {
 			note: {
 				deckName: input.deckName,
 				modelName: input.modelName,
 				fields: input.fields,
 				tags: input.tags,
 				options: {
-					allowDuplicate: false,
+					allowDuplicate: input.allowDuplicate === true,
 					duplicateScope: 'deck',
 				},
 			},
 		});
-		if (noteId == null) {
-			throw new AnkiConnectError('addNote returned null (duplicate?)');
-		}
-		return noteId;
 	}
 
 	async updateNoteFields(
@@ -103,12 +133,18 @@ export class AnkiConnectClient {
 		});
 	}
 
+	async findNotes(query: string): Promise<number[]> {
+		const ids = await this.invoke<number[]>('findNotes', { query });
+		return Array.isArray(ids) ? ids : [];
+	}
+
 	async notesInfo(noteIds: number[]): Promise<
 		Array<{
 			noteId: number;
 			cards: number[];
 			tags: string[];
 			modelName: string;
+			fields: Record<string, string>;
 		}>
 	> {
 		if (noteIds.length === 0) {
@@ -120,6 +156,7 @@ export class AnkiConnectClient {
 				cards?: number[];
 				tags?: string[];
 				modelName?: string;
+				fields?: Record<string, { value?: string }>;
 			} | null>
 		>('notesInfo', { notes: noteIds });
 
@@ -127,14 +164,61 @@ export class AnkiConnectClient {
 			if (!entry || typeof entry.noteId !== 'number') {
 				return [];
 			}
+			const fields: Record<string, string> = {};
+			for (const [name, value] of Object.entries(entry.fields ?? {})) {
+				fields[name] = value?.value ?? '';
+			}
 			return [
 				{
 					noteId: entry.noteId,
 					cards: Array.isArray(entry.cards) ? entry.cards : [],
 					tags: Array.isArray(entry.tags) ? entry.tags : [],
 					modelName: entry.modelName ?? '',
+					fields,
 				},
 			];
+		});
+	}
+
+	async listDeckNames(): Promise<string[]> {
+		const map = await this.invoke<Record<string, number>>(
+			'deckNamesAndIds',
+			{},
+		);
+		return Object.keys(map ?? {});
+	}
+
+	async getDeckStats(
+		deckNames: string[],
+	): Promise<Array<{ deckName: string; noteCount: number }>> {
+		if (deckNames.length === 0) {
+			return [];
+		}
+		const deckNamesAndIds = await this.invoke<Record<string, number>>(
+			'deckNamesAndIds',
+			{},
+		);
+		const rawStats = await this.invoke<unknown>('getDeckStats', {
+			decks: deckNames,
+		});
+
+		return deckNames.map((deckName) => ({
+			deckName,
+			noteCount: extractDeckNoteCount(
+				rawStats,
+				deckNamesAndIds[deckName],
+			),
+		}));
+	}
+
+	async deleteDecks(deckNames: string[]): Promise<void> {
+		const unique = [...new Set(deckNames.filter(Boolean))];
+		if (unique.length === 0) {
+			return;
+		}
+		await this.invoke('deleteDecks', {
+			decks: unique,
+			cardsToo: true,
 		});
 	}
 
@@ -235,4 +319,19 @@ export class AnkiConnectClient {
 		}
 		return parsed.result;
 	}
+}
+
+function extractDeckNoteCount(
+	rawStats: unknown,
+	deckId: number | undefined,
+): number {
+	if (!rawStats || typeof rawStats !== 'object' || typeof deckId !== 'number') {
+		return -1;
+	}
+	const raw = (rawStats as Record<string, unknown>)[String(deckId)];
+	if (!raw || typeof raw !== 'object') {
+		return -1;
+	}
+	const total = (raw as { total_in_deck?: unknown }).total_in_deck;
+	return typeof total === 'number' && Number.isFinite(total) ? total : -1;
 }

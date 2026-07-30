@@ -13,7 +13,7 @@ import {
 	DECK_TEMPLATE_IDS,
 	type DeckTemplateId,
 } from '../../anki/templates';
-import { syncCardToAnki, syncNodesToAnki } from '../../anki/syncCard';
+import { syncCardListToAnki, syncNodesToAnki } from '../../anki/syncCard';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
@@ -542,13 +542,20 @@ export class SyncPanelModal extends Modal {
 				this.app,
 				this.plugin.settings,
 				node,
+				{
+					persistSettings: () => this.plugin.saveSettings(),
+				},
 			);
 			if (result.ok === 0 && result.fail === 0) {
 				new Notice(`${label}：没有可同步的卡片`);
 				this.statusEl.setText('没有可同步的卡片');
 				return;
 			}
-			const summary = `${label}：成功 ${result.ok}，失败 ${result.fail}`;
+			const cleanupHint =
+				result.emptyDecksDeleted > 0
+					? `，清理空牌组 ${result.emptyDecksDeleted}`
+					: '';
+			const summary = `${label}：成功 ${result.ok}，失败 ${result.fail}${cleanupHint}`;
 			new Notice(summary);
 			this.statusEl.setText(summary);
 			if (result.warnings.length > 0) {
@@ -828,45 +835,24 @@ export class SyncPanelModal extends Modal {
 		}
 
 		this.statusEl.setText(`正在同步 ${cards.length} 张卡片到 Anki…`);
-		let ok = 0;
-		let fail = 0;
-		const warnings: string[] = [];
+		const result = await syncCardListToAnki(
+			this.app,
+			this.plugin.settings,
+			cards,
+			{
+				persistSettings: () => this.plugin.saveSettings(),
+			},
+		);
 
-		// Bottom-to-top within each file so ID writeback keeps line indexes valid.
-		cards.sort((a, b) => {
-			const pathCmp = (a.sourceFilePath ?? '').localeCompare(
-				b.sourceFilePath ?? '',
-			);
-			if (pathCmp !== 0) {
-				return pathCmp;
-			}
-			return b.lineStart - a.lineStart;
-		});
-
-		for (const card of cards) {
-			try {
-				const result = await syncCardToAnki(
-					this.app,
-					this.plugin.settings,
-					card,
-				);
-				ok += 1;
-				if (result.warning) {
-					warnings.push(result.warning);
-				}
-			} catch (error) {
-				fail += 1;
-				const msg =
-					error instanceof Error ? error.message : String(error);
-				warnings.push(`「${card.front.slice(0, 24)}」: ${msg}`);
-			}
-		}
-
-		const summary = `Anki 同步：成功 ${ok}，失败 ${fail}`;
+		const cleanupHint =
+			result.emptyDecksDeleted > 0
+				? `，清理空牌组 ${result.emptyDecksDeleted}`
+				: '';
+		const summary = `Anki 同步：成功 ${result.ok}，失败 ${result.fail}${cleanupHint}`;
 		new Notice(summary);
 		this.statusEl.setText(summary);
-		if (warnings.length > 0) {
-			console.warn('[Deck To Anki] Update sync warnings', warnings);
+		if (result.warnings.length > 0) {
+			console.warn('[Deck To Anki] Update sync warnings', result.warnings);
 		}
 		await this.reload({ preserveTab: true });
 	}
