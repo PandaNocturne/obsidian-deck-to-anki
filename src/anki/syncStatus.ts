@@ -18,6 +18,7 @@ import {
 	resolveSourceFile,
 	toAnkiDeckName,
 } from './backlink';
+import type { MediaCompressCache } from './mediaCompressCache';
 import { resolveNumberingOptions } from './numbering';
 import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
@@ -190,6 +191,7 @@ export async function buildComparablePayload(
 	app: App,
 	settings: DeckToAnkiSettings,
 	card: CardNode,
+	mediaCache?: MediaCompressCache | null,
 ): Promise<AnkiComparablePayload> {
 	const filePath = card.sourceFilePath;
 	if (!filePath) {
@@ -208,7 +210,7 @@ export async function buildComparablePayload(
 	);
 	const deckName = toAnkiDeckName(card.deckPath);
 
-	const mediaOpts = mediaProcessOptionsFromSettings(settings);
+	const mediaOpts = mediaProcessOptionsFromSettings(settings, mediaCache);
 	const [front, back] = await Promise.all([
 		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
 		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
@@ -630,6 +632,7 @@ async function stampCardStatuses(
 		progressOffset?: number;
 		progressTotal?: number;
 		progressLabel?: (done: number, cardTotal: number) => string;
+		mediaCache?: MediaCompressCache | null;
 	},
 ): Promise<void> {
 	const offset = options?.progressOffset ?? 0;
@@ -652,6 +655,7 @@ async function stampCardStatuses(
 						app,
 						settings,
 						card,
+						options?.mediaCache,
 					);
 					const inExpectedDeck =
 						(
@@ -737,7 +741,7 @@ export async function prefetchSyncStatusForCards(
 	settings: DeckToAnkiSettings,
 	cards: CardNode[],
 	onProgress?: SyncStatusProgressHandler,
-	options?: { root?: DeckNode },
+	options?: { root?: DeckNode; mediaCache?: MediaCompressCache | null },
 ): Promise<SyncStatusPrefetchResult> {
 	if (cards.length === 0) {
 		return { ankiOnline: true, deletedCount: 0 };
@@ -799,6 +803,7 @@ export async function prefetchSyncStatusForCards(
 		onProgress,
 		progressOffset: step,
 		progressTotal: total,
+		mediaCache: options?.mediaCache,
 	});
 	step += cards.length;
 
@@ -847,6 +852,7 @@ export async function prefetchSyncStatus(
 	settings: DeckToAnkiSettings,
 	root: DeckNode,
 	onProgress?: SyncStatusProgressHandler,
+	options?: { mediaCache?: MediaCompressCache | null },
 ): Promise<SyncStatusPrefetchResult> {
 	clearDeletedChildren(root);
 	const localCards = collectLocalCards(root);
@@ -909,6 +915,7 @@ export async function prefetchSyncStatus(
 		onProgress,
 		progressOffset: step,
 		progressTotal: total,
+		mediaCache: options?.mediaCache,
 	});
 	step += localCards.length;
 

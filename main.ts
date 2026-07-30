@@ -1,4 +1,5 @@
 import { addIcon, Plugin } from 'obsidian';
+import { MediaCompressCache } from './src/anki/mediaCompressCache';
 import { registerCommands } from './src/commands/registerCommands';
 import {
 	DeckToAnkiSettingTab,
@@ -14,9 +15,12 @@ import {
 
 export default class DeckToAnkiPlugin extends Plugin {
 	settings!: DeckToAnkiSettings;
+	mediaCompressCache!: MediaCompressCache;
 
 	async onload() {
 		await this.loadSettings();
+		this.mediaCompressCache = new MediaCompressCache(this);
+		await this.mediaCompressCache.load();
 
 		addIcon(ANKI_ICON_ID, ANKI_ICON_SVG);
 

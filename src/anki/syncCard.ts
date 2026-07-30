@@ -3,6 +3,8 @@ import {
 	mediaProcessOptionsFromSettings,
 	type DeckToAnkiSettings,
 } from '../settings';
+import type { MediaCompressCache } from './mediaCompressCache';
+import type { MediaProcessOptions } from './processMedia';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode, DeckNode } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
@@ -44,6 +46,8 @@ export interface SyncPersistOptions {
 	/** Persist settings after Anki template styles are pushed. */
 	persistSettings?: () => Promise<void>;
 	forceModelUpdate?: boolean;
+	/** Shared compress cache for stable Anki media names. */
+	mediaCache?: MediaCompressCache;
 }
 
 export function collectCardsFromNode(
@@ -283,7 +287,10 @@ export async function syncCardToAnki(
 	}
 	await client.createDeck(deckName);
 
-	const mediaOpts = mediaProcessOptionsFromSettings(settings);
+	const mediaOpts = mediaProcessOptionsFromSettings(
+		settings,
+		options?.mediaCache,
+	);
 	const [front, back] = await Promise.all([
 		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
 		renderFieldWithMedia(app, card.back, filePath, mediaOpts),

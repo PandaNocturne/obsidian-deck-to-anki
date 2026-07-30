@@ -571,7 +571,7 @@ export class SyncPanelUI {
 							window.setTimeout(resolve, 0);
 						});
 					},
-					{ root: this.viewRoot },
+					{ root: this.viewRoot, mediaCache: this.plugin.mediaCompressCache },
 				);
 				this.state.restoreLeafSelection(
 					this.viewRoot,
@@ -654,7 +654,7 @@ export class SyncPanelUI {
 						window.setTimeout(resolve, 0);
 					});
 				},
-				{ root: this.viewRoot },
+				{ root: this.viewRoot, mediaCache: this.plugin.mediaCompressCache },
 			);
 
 			if (id !== this.bgCheckId || this.busy) {
@@ -1042,6 +1042,7 @@ export class SyncPanelUI {
 					node,
 					{
 						persistSettings: () => this.plugin.saveSettings(),
+						mediaCache: this.plugin.mediaCompressCache,
 					},
 				);
 				if (result.ok === 0 && result.fail === 0) {
@@ -1435,7 +1436,7 @@ export class SyncPanelUI {
 						window.setTimeout(resolve, 0);
 					});
 				},
-				{ root: this.viewRoot ?? undefined },
+				{ root: this.viewRoot ?? undefined, mediaCache: this.plugin.mediaCompressCache },
 			);
 			this.ankiStatusChecked = true;
 			this.renderBody();
@@ -1575,6 +1576,7 @@ export class SyncPanelUI {
 					cards,
 					{
 						persistSettings: () => this.plugin.saveSettings(),
+						mediaCache: this.plugin.mediaCompressCache,
 					},
 				);
 				ok += result.ok;

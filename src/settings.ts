@@ -1,5 +1,7 @@
 import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
+import type { MediaCompressCache } from './anki/mediaCompressCache';
+import type { MediaProcessOptions } from './anki/processMedia';
 import { forceUpdateDeckTemplate } from './anki/syncCard';
 import {
 	createDefaultDeckTemplateStyles,
@@ -144,12 +146,19 @@ export function mergeSettings(
 /** Media options for Anki field render / upload (does not touch vault files). */
 export function mediaProcessOptionsFromSettings(
 	settings: DeckToAnkiSettings,
-): { compressQuality?: number } | undefined {
+	cache?: MediaCompressCache | null,
+): MediaProcessOptions | undefined {
 	if (settings.mediaCompressEnabled === false) {
 		return undefined;
 	}
 	const q = settings.mediaCompressQuality ?? 75;
-	return { compressQuality: Math.min(100, Math.max(1, Math.round(q))) };
+	const opts: MediaProcessOptions = {
+		compressQuality: Math.min(100, Math.max(1, Math.round(q))),
+	};
+	if (cache) {
+		opts.compressCache = cache;
+	}
+	return opts;
 }
 
 export class DeckToAnkiSettingTab extends PluginSettingTab {
@@ -342,6 +351,20 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 							this.display();
 						}),
+				);
+
+			new Setting(containerEl)
+				.setName('图片压缩缓存')
+				.setDesc(
+					`按文件内容 hash + 质量缓存压缩结果，保证同步与状态对比文件名一致。当前 ${this.plugin.mediaCompressCache.size} 条。`,
+				)
+				.addButton((btn) =>
+					btn.setButtonText('清空缓存').onClick(async () => {
+						this.plugin.mediaCompressCache.clear();
+						await this.plugin.mediaCompressCache.saveNow();
+						new Notice('已清空图片压缩缓存');
+						this.display();
+					}),
 				);
 		}
 

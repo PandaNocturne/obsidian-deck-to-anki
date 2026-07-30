@@ -17,6 +17,7 @@ main.js
 
 # obsidian
 data.json
+media-compress-cache.json
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store

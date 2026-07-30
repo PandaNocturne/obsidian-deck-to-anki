@@ -3,6 +3,10 @@ import {
 	compressImageForAnki,
 	isCompressibleImageExt,
 } from './compressImage';
+import {
+	hashFileContent,
+	MediaCompressCache,
+} from './mediaCompressCache';
 
 export interface MediaAsset {
 	kind: 'image' | 'audio';
@@ -19,6 +23,8 @@ export interface MediaAsset {
 export interface MediaProcessOptions {
 	/** JPEG quality 1–100 when compressing raster images for Anki. */
 	compressQuality?: number;
+	/** Stable compress results keyed by content hash. */
+	compressCache?: MediaCompressCache;
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -144,19 +150,42 @@ async function buildAsset(
 
 	if (shouldCompress) {
 		const data = await app.vault.readBinary(file);
+		const contentHash = await hashFileContent(data);
+		const cacheKey = MediaCompressCache.cacheKey(contentHash, quality);
+		const cache = options?.compressCache;
+		const cached = cache?.get(cacheKey);
+		if (cached) {
+			return {
+				kind,
+				fileName: ankiFileNameFor(file, cached.ext),
+				dataBase64: cached.dataBase64,
+				vaultPath: file.path,
+			};
+		}
+
 		const compressed = await compressImageForAnki(
 			data,
 			file.extension,
 			quality,
 		);
-		if (compressed) {
-			return {
-				kind,
-				fileName: ankiFileNameFor(file, compressed.ext),
-				dataBase64: compressed.dataBase64,
-				vaultPath: file.path,
-			};
-		}
+		const entry = compressed
+			? {
+					ext: compressed.ext,
+					dataBase64: compressed.dataBase64,
+					cachedAt: Date.now(),
+				}
+			: {
+					ext: file.extension.toLowerCase(),
+					dataBase64: arrayBufferToBase64(data),
+					cachedAt: Date.now(),
+				};
+		cache?.set(cacheKey, entry);
+		return {
+			kind,
+			fileName: ankiFileNameFor(file, entry.ext),
+			dataBase64: entry.dataBase64,
+			vaultPath: file.path,
+		};
 	}
 
 	const fileName = ankiFileNameFor(file);

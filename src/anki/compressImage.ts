@@ -78,13 +78,6 @@ export async function compressImageForAnki(
 		if (!outBlob || outBlob.size < 1) {
 			return null;
 		}
-		// Keep original when JPEG is larger (e.g. small PNG icons).
-		if (outBlob.size >= data.byteLength && (ext === 'jpg' || ext === 'jpeg')) {
-			return null;
-		}
-		if (outBlob.size >= data.byteLength * 0.98 && ext === 'png' && data.byteLength < 8_000) {
-			return null;
-		}
 
 		const out = await outBlob.arrayBuffer();
 		return {
