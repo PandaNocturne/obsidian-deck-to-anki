@@ -266,6 +266,13 @@ export function clearAllDeckYaml(content: string): string {
 	return stripEmptyFrontmatter(next);
 }
 
+/** Remove only `deckFile` (keeps other deck YAML). */
+export function removeDeckFileYaml(content: string): string {
+	return stripEmptyFrontmatter(
+		applyFrontmatterUpdates(content, {}, new Set(['deckFile'])),
+	);
+}
+
 /** Insert or update camelCase YAML deck properties. */
 export function upsertDeckYaml(
 	content: string,

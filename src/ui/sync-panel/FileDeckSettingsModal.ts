@@ -4,6 +4,7 @@ import {
 	clearAllDeckYaml,
 	upsertDeckYaml,
 } from '../../domain/head/frontmatter';
+import { clearDeckFileOnFileChildren } from '../../domain/file/clearChildDeckFile';
 import type { DeckType } from '../../domain/head/types';
 
 /** Settings draft type; `none` clears all deck YAML on Save. */
@@ -184,24 +185,47 @@ export class FileDeckSettingsModal extends Modal {
 
 	private async save(): Promise<void> {
 		const content = await this.app.vault.read(this.file);
-		const next =
-			this.draft.deckType === 'none'
-				? clearAllDeckYaml(content)
-				: upsertDeckYaml(content, {
-						deckType: this.draft.deckType,
-						deckName: this.draft.deckName,
-						deckLevel:
-							this.draft.deckType === 'head'
-								? this.draft.deckLevel
-								: undefined,
-						deckStatus: this.draft.deckStatus,
-					});
+
+		if (this.draft.deckType === 'none') {
+			let childCleared = 0;
+			if (this.initial.deckType === 'file') {
+				childCleared = await clearDeckFileOnFileChildren(
+					this.app,
+					this.file,
+					content,
+				);
+			}
+			const next = clearAllDeckYaml(content);
+			if (next === content && childCleared === 0) {
+				new Notice('YAML 无变化');
+			} else {
+				if (next !== content) {
+					await this.app.vault.modify(this.file, next);
+				}
+				new Notice(
+					childCleared > 0
+						? `已移除全部 deck YAML，并清除 ${childCleared} 个子笔记的 deckFile`
+						: '已移除全部 deck YAML 属性',
+				);
+			}
+			this.finished = true;
+			this.close();
+			await this.onDone(this.draft, { persisted: true });
+			return;
+		}
+
+		const next = upsertDeckYaml(content, {
+			deckType: this.draft.deckType,
+			deckName: this.draft.deckName,
+			deckLevel:
+				this.draft.deckType === 'head'
+					? this.draft.deckLevel
+					: undefined,
+			deckStatus: this.draft.deckStatus,
+		});
 
 		if (next === content) {
 			new Notice('YAML 无变化');
-		} else if (this.draft.deckType === 'none') {
-			await this.app.vault.modify(this.file, next);
-			new Notice('已移除全部 deck YAML 属性');
 		} else {
 			await this.app.vault.modify(this.file, next);
 			new Notice('已更新笔记 YAML 属性');
