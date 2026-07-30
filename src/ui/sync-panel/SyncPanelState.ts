@@ -204,4 +204,11 @@ export class SyncPanelState {
 			this.setSelectedCascade(child, selected);
 		}
 	}
+
+	/** Re-apply default selection after Anki status check. */
+	reselectByStatus(root: DeckNode): void {
+		this.root = root;
+		this.selected.clear();
+		this.selectAll(root);
+	}
 }

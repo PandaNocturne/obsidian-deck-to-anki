@@ -203,6 +203,18 @@ export class SyncPanelModal extends Modal {
 			void this.reload({ preserveTab: true });
 		});
 
+		const checkBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: {
+				'aria-label': '检查',
+				title: '对照 Anki 检测卡片同步状态',
+			},
+		});
+		setIcon(checkBtn, 'scan-search');
+		checkBtn.addEventListener('click', () => {
+			void this.handleCheckStatus();
+		});
+
 		const settingsBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: { 'aria-label': '插件设置', title: '打开插件设置' },
@@ -366,15 +378,6 @@ export class SyncPanelModal extends Modal {
 			];
 		}
 
-		const status = await prefetchSyncStatus(
-			this.app,
-			this.plugin.settings,
-			parsed.root,
-		);
-		if (status.warning) {
-			this.forestWarnings = [...this.forestWarnings, status.warning];
-		}
-
 		this.state.resetFromTree(parsed.root, {
 			parseType:
 				(useSessionOnParseTarget
@@ -404,15 +407,6 @@ export class SyncPanelModal extends Modal {
 		this.forestItems = result.items;
 		this.forestWarnings = result.warnings;
 		this.focusChildLabel = null;
-
-		const status = await prefetchSyncStatus(
-			this.app,
-			this.plugin.settings,
-			result.root,
-		);
-		if (status.warning) {
-			this.forestWarnings = [...this.forestWarnings, status.warning];
-		}
 
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
@@ -890,6 +884,46 @@ export class SyncPanelModal extends Modal {
 				? undefined
 				: { allowedDeckTypes: ['head', 'list', 'card'] },
 		);
+	}
+
+	/**
+	 * Compare the current tree against Anki (toolbar 检查).
+	 * Does not run on open / refresh — only on demand.
+	 */
+	private async handleCheckStatus(): Promise<void> {
+		if (!this.viewRoot) {
+			new Notice('没有可检查的牌组');
+			return;
+		}
+
+		this.statusEl.setText('正在对照 Anki 检测同步状态…');
+		try {
+			const result = await prefetchSyncStatus(
+				this.app,
+				this.plugin.settings,
+				this.viewRoot,
+			);
+			this.state.reselectByStatus(this.viewRoot);
+			this.renderBody();
+
+			if (result.warning) {
+				new Notice(result.warning);
+				this.statusEl.setText(result.warning);
+				return;
+			}
+
+			const hint =
+				result.deletedCount > 0
+					? `，发现仅 Anki 存在 ${result.deletedCount} 条`
+					: '';
+			const summary = `状态检测完成${hint}`;
+			new Notice(summary);
+			this.statusEl.setText(summary);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			new Notice(`状态检测失败：${msg}`);
+			this.statusEl.setText(`状态检测失败：${msg}`);
+		}
 	}
 
 	/** Collect checked leaf cards under the current view tree. */
