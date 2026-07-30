@@ -7,8 +7,25 @@ import {
 	type MediaAsset,
 } from './processMedia';
 
+/** Obsidian / plugin chrome injected into rendered code blocks — not for Anki. */
+const OBSIDIAN_CODE_UI_SELECTOR = [
+	'button.copy-code-button',
+	'button.run-code-button',
+	'.copy-code-button',
+	'.run-code-button',
+	'button.edit-block-button',
+	'.edit-block-button',
+].join(', ');
+
+function stripObsidianUiChrome(host: HTMLElement): void {
+	host.querySelectorAll(OBSIDIAN_CODE_UI_SELECTOR).forEach((el) => {
+		el.remove();
+	});
+}
+
 /**
  * Render markdown to HTML using Obsidian's MarkdownRenderer.
+ * Strips editor chrome (copy/run buttons) that would otherwise appear in Anki.
  */
 export async function renderMarkdownToHtml(
 	app: App,
@@ -31,6 +48,7 @@ export async function renderMarkdownToHtml(
 			sourcePath,
 			component,
 		);
+		stripObsidianUiChrome(host);
 		return host.innerHTML;
 	} finally {
 		component.unload();
