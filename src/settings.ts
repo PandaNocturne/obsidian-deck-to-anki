@@ -2,17 +2,20 @@ import { App, PluginSettingTab, Setting } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
 import type { DeckType } from './domain/head/types';
 
-/** Fallback card heading level when YAML has no deckLevel. */
+/** Fallback when settings / YAML have no deckLevel. */
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
+	/** Default heading level treated as card front in head mode (YAML deckLevel). */
+	cardHeadingLevel: number;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
 
 export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	defaultDeckType: 'head',
+	cardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -32,7 +35,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Default deck mode')
 			.setDesc(
-				'Default parse mode in the sync panel. Notes are always parsed from the active file; Update writes deckType to YAML. Head notes set deckLevel in the note YAML settings.',
+				'Default parse mode in the sync panel. Notes are always parsed from the active file; Update writes deckType to YAML.',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -46,6 +49,23 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		new Setting(containerEl)
+			.setName('Default heading level')
+			.setDesc(
+				'Default card heading level for head mode when the note has no deckLevel in YAML. Notes can still override via YAML settings.',
+			)
+			.addDropdown((dropdown) => {
+				for (let level = 1; level <= 6; level++) {
+					dropdown.addOption(String(level), `H${level}`);
+				}
+				dropdown
+					.setValue(String(this.plugin.settings.cardHeadingLevel))
+					.onChange(async (value) => {
+						this.plugin.settings.cardHeadingLevel = Number(value);
+						await this.plugin.saveSettings();
+					});
+			});
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',

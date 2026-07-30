@@ -83,7 +83,15 @@ export class SyncPanelModal extends Modal {
 		super(plugin.app);
 		this.plugin = plugin;
 		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
-		this.state.cardLevel = DEFAULT_CARD_HEADING_LEVEL;
+		this.state.cardLevel = this.defaultCardHeadingLevel();
+	}
+
+	/** Plugin setting default for head-mode card level (YAML deckLevel fallback). */
+	private defaultCardHeadingLevel(): number {
+		const level = this.plugin.settings.cardHeadingLevel;
+		return Number.isInteger(level) && level >= 1 && level <= 6
+			? level
+			: DEFAULT_CARD_HEADING_LEVEL;
 	}
 
 	onOpen(): void {
@@ -159,6 +167,22 @@ export class SyncPanelModal extends Modal {
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.addEventListener('click', () => {
 			void this.reload({ preserveTab: true });
+		});
+
+		const settingsBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '插件设置', title: '打开插件设置' },
+		});
+		setIcon(settingsBtn, 'settings');
+		settingsBtn.addEventListener('click', () => {
+			this.close();
+			const setting = (
+				this.app as unknown as {
+					setting: { open: () => void; openTabById: (id: string) => void };
+				}
+			).setting;
+			setting.open();
+			setting.openTabById(this.plugin.manifest.id);
 		});
 
 		const bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
@@ -265,8 +289,8 @@ export class SyncPanelModal extends Modal {
 				? this.sessionOverride?.deckLevel
 				: undefined,
 			fallbackDeckType: this.plugin.settings.defaultDeckType || 'head',
-			fallbackDeckLevel: DEFAULT_CARD_HEADING_LEVEL,
-			childCardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
+			fallbackDeckLevel: this.defaultCardHeadingLevel(),
+			childCardHeadingLevel: this.defaultCardHeadingLevel(),
 			childTypeOverrides,
 		});
 
@@ -318,8 +342,8 @@ export class SyncPanelModal extends Modal {
 		const result = await parseVaultDeckForest(this.app, {
 			mode,
 			includeFolders: this.plugin.settings.includeFolders ?? [],
-			fallbackDeckLevel: DEFAULT_CARD_HEADING_LEVEL,
-			childCardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
+			fallbackDeckLevel: this.defaultCardHeadingLevel(),
+			childCardHeadingLevel: this.defaultCardHeadingLevel(),
 		});
 
 		this.parsed = null;
@@ -329,7 +353,7 @@ export class SyncPanelModal extends Modal {
 		this.focusChildLabel = null;
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
-			cardLevel: DEFAULT_CARD_HEADING_LEVEL,
+			cardLevel: this.defaultCardHeadingLevel(),
 		});
 	}
 
@@ -577,7 +601,7 @@ export class SyncPanelModal extends Modal {
 			return;
 		}
 
-		const fallbackLevel = DEFAULT_CARD_HEADING_LEVEL;
+		const fallbackLevel = this.defaultCardHeadingLevel();
 		let deckType: DeckType = deck.deckType ?? this.state.parseType ?? 'head';
 		let deckName = '';
 		let deckLevel = fallbackLevel;
