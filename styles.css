@@ -235,6 +235,15 @@ if you want to view the source, please visit the github repository of this plugi
   color: var(--text-muted);
   font-weight: 400;
 }
+.dta-sync-card-index {
+  flex-shrink: 0;
+  min-width: 1.35rem;
+  color: var(--text-faint);
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  user-select: none;
+}
 .dta-sync-type-badge {
   flex-shrink: 0;
   padding: 0.1rem 0.45rem;

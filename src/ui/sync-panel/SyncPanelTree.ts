@@ -223,6 +223,7 @@ function renderDeck(
 
 	const childrenEl = parent.createDiv({ cls: 'dta-sync-children' });
 	let deckSibling = 0;
+	let cardSibling = 0;
 	for (const child of deck.children) {
 		if (child.kind === 'deck') {
 			deckSibling += 1;
@@ -236,7 +237,8 @@ function renderDeck(
 				deckSibling,
 			);
 		} else {
-			renderCard(childrenEl, child, state, handlers);
+			cardSibling += 1;
+			renderCard(childrenEl, child, state, handlers, cardSibling);
 		}
 	}
 }
@@ -246,6 +248,7 @@ function renderCard(
 	card: CardNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	siblingIndex: number,
 ): void {
 	const isListCard = card.deckClass === 'list';
 	const canJump = !isListCard || Boolean(card.blockId);
@@ -274,6 +277,13 @@ function renderCard(
 
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
 	setIcon(icon, resolveCardIcon(card.deckClass));
+
+	// Virtual index for sort/display only — not part of card content.
+	row.createSpan({
+		cls: 'dta-sync-card-index',
+		text: `${siblingIndex}.`,
+		attr: { title: '虚拟编号（仅排序可视化）' },
+	});
 
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({
