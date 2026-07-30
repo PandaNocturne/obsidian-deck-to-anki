@@ -98,6 +98,8 @@ export interface ParseFileModeContext {
 	options: ParseHeadFileOptions;
 	/** Fallback heading level for child head notes without deckLevel. */
 	childCardHeadingLevel: number;
+	/** Head ---: include heading in card front for child head notes. */
+	includeHeadingInFront?: boolean;
 	/**
 	 * Session overrides for child notes (path → forced deckType).
 	 * Does not write YAML; skips auto-write when present.
@@ -177,6 +179,7 @@ export async function parseFileMode(
 		content,
 		options,
 		childCardHeadingLevel,
+		includeHeadingInFront = false,
 		childTypeOverrides,
 	} = ctx;
 	const meta = parseFrontmatter(content);
@@ -283,20 +286,21 @@ export async function parseFileMode(
 		const parsedChild =
 			resolved.deckType === 'list'
 				? buildListTree({
-						filePath: dest.path,
-						content: childContent,
-						deckName: childName,
-						flattenSoleH1,
-					})
+					filePath: dest.path,
+					content: childContent,
+					deckName: childName,
+					flattenSoleH1,
+				})
 				: buildHeadTree({
-						filePath: dest.path,
-						content: childContent,
-						deckName: childName,
-						cardHeadingLevel:
-							childMeta.deckLevel ?? childCardHeadingLevel,
-						pruneEmpty: true,
-						flattenSoleH1,
-					});
+					filePath: dest.path,
+					content: childContent,
+					deckName: childName,
+					cardHeadingLevel:
+						childMeta.deckLevel ?? childCardHeadingLevel,
+					pruneEmpty: true,
+					flattenSoleH1,
+					includeHeadingInFront,
+				});
 
 		warnings.push(
 			...parsedChild.warnings.map((w) => `${childName}: ${w}`),

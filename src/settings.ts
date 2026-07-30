@@ -9,6 +9,11 @@ export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
 	/** Default heading level treated as card front in head mode (YAML deckLevel). */
 	cardHeadingLevel: number;
+	/**
+	 * Head mode with --- separator: when true, card front includes the heading text.
+	 * Default false — front is only the body above ---.
+	 */
+	headIncludeTitleInFront: boolean;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
@@ -16,6 +21,7 @@ export interface DeckToAnkiSettings {
 export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	defaultDeckType: 'head',
 	cardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
+	headIncludeTitleInFront: false,
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -66,6 +72,20 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					});
 			});
+
+		new Setting(containerEl)
+			.setName('Include heading in front')
+			.setDesc(
+				'Head mode: when a card block contains ---, put the heading into the card front as well. Off by default — front is only the text above ---.',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.headIncludeTitleInFront)
+					.onChange(async (value) => {
+						this.plugin.settings.headIncludeTitleInFront = value;
+						await this.plugin.saveSettings();
+					}),
+			);
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',

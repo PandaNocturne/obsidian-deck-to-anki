@@ -88,6 +88,51 @@ function extractBack(
 		.replace(/^\n+|\n+$/g, '');
 }
 
+const CARD_SEP_REGEXP = /^---\s*$/;
+
+/** First standalone --- in [start, endExclusive), skipping fenced code. */
+function findHrSeparatorLine(
+	lines: string[],
+	start: number,
+	endExclusive: number,
+): number {
+	let inFence = false;
+	let fenceChar = '';
+	for (let i = start; i < endExclusive; i++) {
+		const line = lines[i] ?? '';
+		const fenceMatch = line.match(/^(`{3,}|~{3,})/);
+		if (fenceMatch?.[1]) {
+			const ch = fenceMatch[1][0] ?? '`';
+			if (!inFence) {
+				inFence = true;
+				fenceChar = ch;
+			} else if (ch === fenceChar) {
+				inFence = false;
+				fenceChar = '';
+			}
+			continue;
+		}
+		if (inFence) {
+			continue;
+		}
+		if (CARD_SEP_REGEXP.test(line)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+function joinFrontParts(heading: string, body: string, includeHeading: boolean): string {
+	const bodyTrim = body.replace(/^\s+|\s+$/g, '');
+	if (includeHeading) {
+		if (!bodyTrim) {
+			return heading;
+		}
+		return `${heading}\n\n${bodyTrim}`;
+	}
+	return bodyTrim;
+}
+
 function joinDeckPath(parts: string[]): string {
 	return parts.filter((part) => part.length > 0).join('::');
 }
@@ -150,6 +195,11 @@ export interface BuildHeadTreeOptions {
 	 * and is not inserted as a nested deck node.
 	 */
 	flattenSoleH1?: boolean;
+	/**
+	 * When card body has ---, include heading text in the front.
+	 * Default false.
+	 */
+	includeHeadingInFront?: boolean;
 }
 
 /**
@@ -166,6 +216,7 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 		cardHeadingLevel: cardLevel,
 		pruneEmpty = true,
 		flattenSoleH1 = false,
+		includeHeadingInFront = false,
 	} = options;
 	const warnings: string[] = [];
 	const lines = content.split(/\r?\n/);
@@ -201,29 +252,56 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 
 		if (heading.level === cardLevel) {
 			const parent = deckStack[deckStack.length - 1] ?? root;
+			const bodyStart = heading.lineIndex + 1;
 			const idMarker = findIdMarkerInLines(
 				lines,
-				heading.lineIndex + 1,
+				bodyStart,
 				blockEnd,
 			);
-			const back = extractBack(
-				lines,
-				heading.lineIndex + 1,
-				blockEnd,
-				idMarker?.lineIndex,
-			);
+			const sepLine = findHrSeparatorLine(lines, bodyStart, blockEnd);
+
+			let front: string;
+			let back: string;
+
+			if (sepLine >= 0) {
+				// Smart ---: body above → front (title optional); below → back.
+				const above = lines
+					.slice(bodyStart, sepLine)
+					.join('\n')
+					.replace(/^\n+|\n+$/g, '');
+				front = joinFrontParts(
+					heading.text,
+					above,
+					includeHeadingInFront,
+				);
+				back = extractBack(
+					lines,
+					sepLine + 1,
+					blockEnd,
+					idMarker?.lineIndex,
+				);
+			} else {
+				front = heading.text;
+				back = extractBack(
+					lines,
+					bodyStart,
+					blockEnd,
+					idMarker?.lineIndex,
+				);
+			}
 
 			cardSeq += 1;
 			const card: CardNode = {
 				kind: 'card',
 				id: `card:${filePath}:${heading.lineIndex}:${cardSeq}`,
-				front: heading.text,
+				front,
 				back,
 				headingLevel: heading.level,
 				lineStart: heading.lineIndex,
 				lineEnd: blockEnd,
 				deckPath: parent.deckPath,
 				deckClass: 'head',
+				navTitle: heading.text,
 				noteId: idMarker?.noteId,
 				idMarker: idMarker ?? undefined,
 				sourceFilePath: filePath,
@@ -239,7 +317,7 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 		while (
 			deckStack.length > 1 &&
 			(deckStack[deckStack.length - 1]?.headingLevel ?? 0) >=
-				heading.level
+			heading.level
 		) {
 			deckStack.pop();
 			pathStack.pop();

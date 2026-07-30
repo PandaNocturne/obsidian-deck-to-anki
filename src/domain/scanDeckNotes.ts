@@ -13,6 +13,7 @@ export interface ScanDeckNotesOptions {
 	includeFolders: string[];
 	fallbackDeckLevel: number;
 	childCardHeadingLevel: number;
+	includeHeadingInFront?: boolean;
 }
 
 function isUnderFolders(filePath: string, folders: string[]): boolean {
@@ -131,6 +132,7 @@ export async function parseVaultDeckForest(
 				fallbackDeckType: 'head',
 				fallbackDeckLevel: options.fallbackDeckLevel,
 				childCardHeadingLevel: options.childCardHeadingLevel,
+				includeHeadingInFront: options.includeHeadingInFront === true,
 				requireYamlDeckType: true,
 			});
 			if (parsed) {

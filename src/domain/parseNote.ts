@@ -14,6 +14,8 @@ export interface ParseNoteOptions {
 	fallbackDeckType: DeckType;
 	fallbackDeckLevel: number;
 	childCardHeadingLevel: number;
+	/** Head mode ---: include heading in card front. */
+	includeHeadingInFront?: boolean;
 	childTypeOverrides?: Map<string, Exclude<DeckType, 'file'>>;
 	/**
 	 * When true, require YAML deckType (used by all/archived scan).
@@ -48,6 +50,7 @@ export async function parseNoteFile(
 			content,
 			options: { deckType: 'file', deckLevel },
 			childCardHeadingLevel: options.childCardHeadingLevel,
+			includeHeadingInFront: options.includeHeadingInFront === true,
 			childTypeOverrides: options.childTypeOverrides,
 		});
 	}
@@ -69,5 +72,6 @@ export async function parseNoteFile(
 	return parseHeadFile(file.path, content, {
 		deckType: 'head',
 		deckLevel,
+		includeHeadingInFront: options.includeHeadingInFront === true,
 	});
 }

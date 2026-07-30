@@ -22,6 +22,11 @@ export interface CardNode {
 	deckPath: string;
 	/** Parse class for icon: head / list / card. */
 	deckClass: DeckClass;
+	/**
+	 * Heading text for navigation (head mode). When front omits the title
+	 * due to --- split, openLink still targets this heading.
+	 */
+	navTitle?: string;
 	noteId?: number;
 	idMarker?: IdMarkerInfo;
 	/** Obsidian block id (`^xxx`) for list cards; required to jump. */
@@ -71,4 +76,6 @@ export interface ParseHeadFileOptions {
 	/** Forced parse mode from the sync panel (default head). */
 	deckType: DeckType;
 	deckLevel: number;
+	/** Head ---: include heading text in card front. Default false. */
+	includeHeadingInFront?: boolean;
 }

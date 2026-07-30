@@ -55,6 +55,7 @@ export function parseHeadFile(
 		deckName,
 		cardHeadingLevel: options.deckLevel,
 		flattenSoleH1,
+		includeHeadingInFront: options.includeHeadingInFront === true,
 	});
 	warnings.push(...treeWarnings);
 	root.deckType = 'head';

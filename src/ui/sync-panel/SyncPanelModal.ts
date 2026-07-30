@@ -299,6 +299,8 @@ export class SyncPanelModal extends Modal {
 			fallbackDeckType: this.plugin.settings.defaultDeckType || 'head',
 			fallbackDeckLevel: this.defaultCardHeadingLevel(),
 			childCardHeadingLevel: this.defaultCardHeadingLevel(),
+			includeHeadingInFront:
+				this.plugin.settings.headIncludeTitleInFront === true,
 			childTypeOverrides,
 		});
 
@@ -357,6 +359,8 @@ export class SyncPanelModal extends Modal {
 			includeFolders: this.plugin.settings.includeFolders ?? [],
 			fallbackDeckLevel: this.defaultCardHeadingLevel(),
 			childCardHeadingLevel: this.defaultCardHeadingLevel(),
+			includeHeadingInFront:
+				this.plugin.settings.headIncludeTitleInFront === true,
 		});
 
 		this.parsed = null;
@@ -538,7 +542,8 @@ export class SyncPanelModal extends Modal {
 			return;
 		}
 
-		const heading = card.front.trim();
+		const heading =
+			(card.navTitle ?? card.front).trim();
 		const linktext = heading ? `${filePath}#${heading}` : filePath;
 		await this.app.workspace.openLinkText(linktext, '', false);
 	}
