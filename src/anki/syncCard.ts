@@ -4,8 +4,8 @@ import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode, DeckNode } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
 import {
-	buildCardBacklinkUri,
 	buildDeckBacklinkHtml,
+	buildDeckSegmentUris,
 	resolveSourceFile,
 	toAnkiDeckName,
 } from './backlink';
@@ -283,7 +283,7 @@ export async function syncCardToAnki(
 	let deckBacklinkHtml = '';
 	let warning: string | undefined;
 	if (settings.deckBacklinkEnabled) {
-		const link = buildCardBacklinkUri({
+		const link = await buildDeckSegmentUris({
 			app,
 			card,
 			scheme: settings.backlinkScheme,
@@ -291,7 +291,7 @@ export async function syncCardToAnki(
 			noteContent,
 		});
 		warning = link.warning;
-		deckBacklinkHtml = buildDeckBacklinkHtml(card.deckPath, link.uri);
+		deckBacklinkHtml = buildDeckBacklinkHtml(link.segments);
 	}
 
 	const tags = settings.deckTagsEnabled

@@ -11,6 +11,20 @@ export interface IdMarkerInfo {
 	lineIndex: number;
 }
 
+/**
+ * One crumb in the Anki deck-tree backlink (一级 > 牌组2 > 子牌组).
+ * Each segment gets its own Obsidian URI.
+ */
+export interface DeckBacklinkSegment {
+	name: string;
+	sourceFilePath: string;
+	/**
+	 * When true, open `file#name` (heading deck).
+	 * When false, open the note file (root / note-level deck).
+	 */
+	headingTarget: boolean;
+}
+
 export interface CardNode {
 	kind: 'card';
 	id: string;
@@ -35,6 +49,8 @@ export interface CardNode {
 	tags?: string[];
 	/** Source note path (file mode child notes). */
 	sourceFilePath?: string;
+	/** Per-deck crumbs for Anki backlink; falls back to deckPath + sourceFilePath. */
+	deckBacklinkTrail?: DeckBacklinkSegment[];
 }
 
 export interface DeckNode {

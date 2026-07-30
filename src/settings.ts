@@ -16,7 +16,7 @@ import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
 /** Bump when shipping new built-in card Front/Back/CSS. */
-export const DECK_TEMPLATE_STYLE_VERSION = 4;
+export const DECK_TEMPLATE_STYLE_VERSION = 6;
 
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
@@ -44,7 +44,7 @@ export interface DeckToAnkiSettings {
 	ankiTemplateSyncedVersion: number;
 	/** Sync Obsidian tags → Anki note tags. */
 	deckTagsEnabled: boolean;
-	/** Write DeckBacklink field (`[deck tree](uri)`). */
+	/** Write DeckBacklink field (per-deck crumbs: 一级 > 牌组2 > …). */
 	deckBacklinkEnabled: boolean;
 	/** URI scheme for DeckBacklink. */
 	backlinkScheme: BacklinkScheme;
@@ -332,7 +332,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Deck backlink')
 			.setDesc(
-				'写入 DeckBacklink 字段：[牌组路径](uri)。牌组路径形如 一级 > 子牌组。',
+				'写入 ob-deck-backlink 牌组树（一级 > 牌组2 > 子牌组）。关闭则不写入该字段。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -350,9 +350,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Backlink scheme')
-			.setDesc('oburi 使用核心 URI；aduri 使用 Advanced URI（需插件）。')
+			.setDesc(
+				'none：只显示牌组树、无跳转；oburi：核心 URI；aduri：Advanced URI（需插件）。',
+			)
 			.addDropdown((dropdown) =>
 				dropdown
+					.addOption('none', 'none')
 					.addOption('oburi', 'oburi')
 					.addOption('aduri', 'aduri')
 					.setValue(this.plugin.settings.backlinkScheme)

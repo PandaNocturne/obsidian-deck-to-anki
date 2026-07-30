@@ -2,6 +2,7 @@ import {
 	pruneEmptyDecks,
 	recountCards,
 } from '../head/buildHeadTree';
+import { trailFromPathStack } from '../head/deckBacklinkTrail';
 import { findIdMarkerInLines, parseIdMarker } from '../head/idMarker';
 import type { CardNode, DeckNode } from '../head/types';
 import { collectCardTags } from '../tags';
@@ -188,6 +189,7 @@ export function buildListTree(options: BuildListTreeOptions): {
 			idMarker: idMarker ?? undefined,
 			blockId,
 			sourceFilePath: filePath,
+			deckBacklinkTrail: trailFromPathStack(pathStack, filePath),
 		};
 		parent.children.push(card);
 

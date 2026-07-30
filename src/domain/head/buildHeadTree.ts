@@ -1,5 +1,6 @@
+import { trailFromPathStack } from './deckBacklinkTrail';
 import { findIdMarkerInLines } from './idMarker';
-import type { CardNode, DeckNode } from './types';
+import type { CardNode, DeckBacklinkSegment, DeckNode } from './types';
 import { collectCardTags } from '../tags';
 
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
@@ -162,13 +163,23 @@ export function pruneEmptyDecks(node: DeckNode): void {
 	});
 }
 
-export function repathDeckTree(node: DeckNode, parentPath: string): void {
+export function repathDeckTree(
+	node: DeckNode,
+	parentPath: string,
+	parentTrailPrefix: DeckBacklinkSegment[] = [],
+): void {
 	node.deckPath = joinDeckPath([parentPath, node.name]);
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
-			repathDeckTree(child, node.deckPath);
+			repathDeckTree(child, node.deckPath, parentTrailPrefix);
 		} else {
 			child.deckPath = node.deckPath;
+			if (parentTrailPrefix.length > 0) {
+				child.deckBacklinkTrail = [
+					...parentTrailPrefix,
+					...(child.deckBacklinkTrail ?? []),
+				];
+			}
 		}
 	}
 }
@@ -307,6 +318,7 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 				noteId: idMarker?.noteId,
 				idMarker: idMarker ?? undefined,
 				sourceFilePath: filePath,
+				deckBacklinkTrail: trailFromPathStack(pathStack, filePath),
 			};
 			parent.children.push(card);
 			continue;

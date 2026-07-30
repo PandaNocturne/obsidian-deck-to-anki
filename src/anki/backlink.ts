@@ -1,7 +1,12 @@
 import type { App, TFile } from 'obsidian';
-import type { CardNode, DeckClass } from '../domain/head/types';
+import { resolveCardBacklinkTrail } from '../domain/head/deckBacklinkTrail';
+import type {
+	CardNode,
+	DeckBacklinkSegment,
+	DeckClass,
+} from '../domain/head/types';
 
-export type BacklinkScheme = 'oburi' | 'aduri';
+export type BacklinkScheme = 'none' | 'oburi' | 'aduri';
 
 export interface BuildBacklinkOptions {
 	app: App;
@@ -103,6 +108,22 @@ function buildObUri(
 	})}`;
 }
 
+/** Open a note, optionally at a heading (deck crumb). */
+export function buildDeckSegmentObUri(
+	vaultName: string,
+	filePath: string,
+	heading?: string,
+): string {
+	const normalized = filePath.replace(/\\/g, '/');
+	const file = heading?.trim()
+		? `${normalized}#${heading.trim()}`
+		: normalized;
+	return `obsidian://open?${buildQuery({
+		vault: vaultName,
+		file,
+	})}`;
+}
+
 /**
  * Advanced URI: open note by uid only (file-level jump).
  * Heading/block anchors temporarily omitted — they break navigation in Anki.
@@ -138,20 +159,138 @@ export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
 		};
 	}
 
+	if (scheme === 'none') {
+		return {
+			uri: '',
+			schemeUsed: 'none',
+		};
+	}
+
 	return {
 		uri: buildObUri(vaultName, filePath, card),
 		schemeUsed: 'oburi',
 	};
 }
 
+async function resolveUidForFile(
+	app: App,
+	filePath: string,
+	uidProperty: string,
+	cachedContent?: string,
+): Promise<string | null> {
+	if (cachedContent !== undefined) {
+		return readFrontmatterProperty(cachedContent, uidProperty);
+	}
+	const file = resolveSourceFile(app, filePath);
+	if (!file) {
+		return null;
+	}
+	const content = await app.vault.cachedRead(file);
+	return readFrontmatterProperty(content, uidProperty);
+}
+
 /**
- * DeckBacklink field HTML: deck tree as a plain anchor.
+ * Build one crumb per deck segment.
+ * - none: tree labels only (no href)
+ * - oburi / aduri: each crumb gets an Obsidian URI
+ */
+export async function buildDeckSegmentUris(options: {
+	app: App;
+	card: CardNode;
+	scheme: BacklinkScheme;
+	uidProperty: string;
+	/** Content of the card's own note (uid cache). */
+	noteContent: string;
+}): Promise<{
+	segments: Array<{ name: string; uri?: string }>;
+	warning?: string;
+}> {
+	const { app, card, scheme, uidProperty, noteContent } = options;
+	const trail = resolveCardBacklinkTrail(card);
+	const names = trail
+		.map((crumb) => crumb.name.trim())
+		.filter(Boolean);
+
+	if (scheme === 'none') {
+		return {
+			segments: names.map((name) => ({ name })),
+		};
+	}
+
+	const vaultName = app.vault.getName();
+	const cardFile = card.sourceFilePath ?? '';
+	let warning: string | undefined;
+	const segments: Array<{ name: string; uri?: string }> = [];
+
+	for (const crumb of trail) {
+		const name = crumb.name.trim();
+		if (!name) {
+			continue;
+		}
+		const filePath = crumb.sourceFilePath || cardFile;
+		let uri: string;
+
+		if (!crumb.headingTarget && scheme === 'aduri') {
+			const cached =
+				filePath === cardFile ? noteContent : undefined;
+			const uid = await resolveUidForFile(
+				app,
+				filePath,
+				uidProperty,
+				cached,
+			);
+			if (uid) {
+				uri = buildAdUri(vaultName, uid);
+			} else {
+				uri = buildDeckSegmentObUri(vaultName, filePath);
+				if (!warning && filePath === cardFile) {
+					warning = `未找到属性 ${uidProperty}，已回退到 oburi`;
+				}
+			}
+		} else {
+			// Heading decks: always oburi (adv-uri heading anchors break in Anki).
+			uri = buildDeckSegmentObUri(
+				vaultName,
+				filePath,
+				crumb.headingTarget ? name : undefined,
+			);
+		}
+
+		segments.push({ name, uri });
+	}
+
+	return { segments, warning };
+}
+
+/**
+ * DeckBacklink field HTML: deck tree crumbs.
+ * With uri → clickable `<a>`; without (scheme none) → plain `<span>`.
  * Avoid MarkdownRenderer — it turns `&` into `&amp;` which breaks
  * custom-protocol clicks inside Anki.
  */
-export function buildDeckBacklinkHtml(deckPath: string, uri: string): string {
+export function buildDeckBacklinkHtml(
+	segments: Array<{ name: string; uri?: string }>,
+): string {
+	if (segments.length === 0) {
+		return '';
+	}
+	return segments
+		.map((seg) => {
+			const label = escapeHtml(seg.name);
+			if (seg.uri) {
+				return `<a class="dta-deck-backlink" href="${seg.uri}">${label}</a>`;
+			}
+			return `<span class="dta-deck-crumb">${label}</span>`;
+		})
+		.join(' <span class="dta-deck-sep">&gt;</span> ');
+}
+
+/** @deprecated Prefer buildDeckBacklinkHtml(segments). */
+export function buildDeckBacklinkHtmlFromPath(
+	deckPath: string,
+	uri: string,
+): string {
 	const label = escapeHtml(formatDeckTree(deckPath) || 'deck');
-	// Keep raw `&` in href for Anki WebView custom-protocol compatibility.
 	return `<a class="dta-deck-backlink" href="${uri}">${label}</a>`;
 }
 
@@ -173,3 +312,6 @@ export function deckClassJumpHint(deckClass: DeckClass): string {
 			return 'heading';
 	}
 }
+
+/** Re-export for callers that only need the trail type. */
+export type { DeckBacklinkSegment };

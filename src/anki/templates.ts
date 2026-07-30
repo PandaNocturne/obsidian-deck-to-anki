@@ -41,7 +41,6 @@ export const DEFAULT_CARD_CSS = `.card {
   font-size: 18px;
   line-height: 1.6;
   color: #1f2937;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
   padding: 1.25rem 1rem 1.5rem;
   min-height: 100%;
   box-sizing: border-box;
@@ -120,6 +119,16 @@ export const DEFAULT_CARD_CSS = `.card {
   color: #64748b;
 }
 
+.dta-deck-sep {
+  color: #94a3b8;
+  margin: 0 0.15em;
+  user-select: none;
+}
+
+.dta-deck-crumb {
+  color: #64748b;
+}
+
 .dta-backlink a,
 .dta-deck-backlink {
   color: #64748b;
@@ -182,8 +191,13 @@ export const DEFAULT_CARD_CSS = `.card {
 
 .nightMode .dta-backlink,
 .nightMode .dta-backlink a,
-.nightMode .dta-deck-backlink {
+.nightMode .dta-deck-backlink,
+.nightMode .dta-deck-crumb {
   color: #94a3b8;
+}
+
+.nightMode .dta-deck-sep {
+  color: #64748b;
 }
 
 .nightMode .dta-backlink a:hover,
@@ -202,8 +216,7 @@ export const DEFAULT_CARD_CSS = `.card {
 
 .nightMode .dta-card pre {
   background: #1e293b;
-}
-`;
+}`;
 
 export const DEFAULT_CARD_FRONT = `<div class="dta-card">
   <div class="dta-title">{{ob-deck-front}}</div>

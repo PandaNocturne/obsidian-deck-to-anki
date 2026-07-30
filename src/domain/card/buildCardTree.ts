@@ -1,6 +1,11 @@
 import { recountCards } from '../head/buildHeadTree';
+import { trailFromPathStack } from '../head/deckBacklinkTrail';
 import { findIdMarkerInLines } from '../head/idMarker';
-import type { CardNode, DeckNode } from '../head/types';
+import type {
+	CardNode,
+	DeckBacklinkSegment,
+	DeckNode,
+} from '../head/types';
 import { collectCardTags } from '../tags';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
@@ -15,6 +20,8 @@ export interface BuildCardTreeOptions {
 	deckName: string;
 	/** Parent deckPath when nested under file mode. */
 	parentDeckPath?: string;
+	/** Precomputed Anki backlink crumbs (file mode parent + this note). */
+	deckBacklinkTrail?: DeckBacklinkSegment[];
 }
 
 /**
@@ -94,7 +101,8 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 	card: CardNode | null;
 	warnings: string[];
 } {
-	const { filePath, content, deckName, parentDeckPath } = options;
+	const { filePath, content, deckName, parentDeckPath, deckBacklinkTrail } =
+		options;
 	const warnings: string[] = [];
 	const deckPath = parentDeckPath
 		? `${parentDeckPath}::${deckName}`
@@ -158,6 +166,9 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		noteId: idMarker?.noteId,
 		idMarker: idMarker ?? undefined,
 		sourceFilePath: filePath,
+		deckBacklinkTrail:
+			deckBacklinkTrail ??
+			trailFromPathStack(deckPath.split('::'), filePath),
 	};
 	return { card, warnings };
 }

@@ -272,6 +272,18 @@ export async function parseFileMode(
 				content: childContent,
 				deckName: childName,
 				parentDeckPath: root.deckPath,
+				deckBacklinkTrail: [
+					{
+						name: deckName,
+						sourceFilePath: filePath,
+						headingTarget: false,
+					},
+					{
+						name: childName,
+						sourceFilePath: dest.path,
+						headingTarget: false,
+					},
+				],
 			});
 			warnings.push(
 				...parsedCard.warnings.map((w) => `${childName}: ${w}`),
@@ -311,7 +323,13 @@ export async function parseFileMode(
 		childRoot.lineStart = ref.lineIndex;
 		childRoot.deckType = resolved.deckType;
 		annotateSourceFile(childRoot, dest.path);
-		repathDeckTree(childRoot, root.deckPath);
+		repathDeckTree(childRoot, root.deckPath, [
+			{
+				name: deckName,
+				sourceFilePath: filePath,
+				headingTarget: false,
+			},
+		]);
 		root.children.push(childRoot);
 	}
 
