@@ -817,5 +817,14 @@ export function countSyncStatusInDeck(deck: DeckNode): Record<
 export function shouldSelectByStatus(
 	status: SyncCardStatus | undefined,
 ): boolean {
-	return status !== 'synced';
+	// Synced (green) cards stay selectable; Update skips them at sync time.
+	void status;
+	return true;
+}
+
+/** Update 节能：已同步卡片跳过；Force 不跳过。 */
+export function shouldSkipOnUpdate(
+	status: SyncCardStatus | undefined,
+): boolean {
+	return status === 'synced';
 }

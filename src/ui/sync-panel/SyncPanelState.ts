@@ -9,7 +9,6 @@ import type {
 import {
 	cardIdentityKeys,
 	deletedIdentityKey,
-	shouldSelectByStatus,
 } from '../../anki/syncStatus';
 
 export type SyncPanelTab = 'current' | 'all' | 'archived';
@@ -98,10 +97,11 @@ export class SyncPanelState {
 	private shouldSelectLeaf(
 		node: CardNode | DeletedAnkiCardNode,
 	): boolean {
+		// Empty title-only heads stay unchecked; synced greens stay checked.
 		if (node.kind === 'card' && isHeadTitleOnlyCard(node)) {
 			return false;
 		}
-		return shouldSelectByStatus(node.syncStatus);
+		return true;
 	}
 
 	private selectAll(node: SyncSelectableNode): void {
@@ -205,7 +205,7 @@ export class SyncPanelState {
 	setSelectedCascade(node: SyncSelectableNode, selected: boolean): void {
 		if (node.kind === 'card' || node.kind === 'deleted-anki') {
 			if (selected && !this.shouldSelectLeaf(node) && node.kind === 'card') {
-				// Allow explicit user check of title-only / synced via leaf click.
+				// Allow explicit user check of title-only heads via leaf click.
 				this.selected.add(node.id);
 				return;
 			}
@@ -232,15 +232,11 @@ export class SyncPanelState {
 				this.selected.delete(child.id);
 				continue;
 			}
-			if (selected && child.kind === 'card' && child.syncStatus === 'synced') {
-				this.selected.delete(child.id);
-				continue;
-			}
 			this.setSelectedCascade(child, selected);
 		}
 	}
 
-	/** Re-apply default selection after Anki status check. */
+	/** Re-apply default selection (title-only still skipped). */
 	reselectByStatus(root: DeckNode): void {
 		this.root = root;
 		this.selected.clear();
@@ -272,16 +268,5 @@ export class SyncPanelState {
 			}
 		};
 		walk(root);
-	}
-
-	/** After incremental recheck: synced → unchecked; others keep or follow status. */
-	applyStatusToSelection(cards: CardNode[]): void {
-		for (const card of cards) {
-			if (shouldSelectByStatus(card.syncStatus)) {
-				this.selected.add(card.id);
-			} else {
-				this.selected.delete(card.id);
-			}
-		}
 	}
 }

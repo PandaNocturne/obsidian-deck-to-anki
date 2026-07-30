@@ -20,9 +20,9 @@ import {
 	cardIdentityKeys,
 	collectLocalCards,
 	findCardsByIdentityKeys,
-	prefetchSyncStatus,
 	prefetchSyncStatusForCards,
 	restoreSyncStatusTree,
+	shouldSkipOnUpdate,
 	snapshotSyncStatusTree,
 	type SyncStatusTreeSnapshot,
 } from '../../anki/syncStatus';
@@ -239,7 +239,7 @@ export class SyncPanelModal extends Modal {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: {
 				'aria-label': '检查',
-				title: '对照 Anki 检测卡片同步状态',
+				title: '对照 Anki 检测勾选卡片的同步状态',
 			},
 		});
 		this.checkBtnEl = checkBtn;
@@ -289,19 +289,17 @@ export class SyncPanelModal extends Modal {
 		const forceBtn = footer.createEl('button', {
 			cls: 'dta-sync-footer-btn mod-warning',
 			text: 'Force',
+			attr: { title: '强制同步勾选卡片（含已同步）' },
 		});
 		this.forceBtnEl = forceBtn;
 		forceBtn.addEventListener('click', () => {
-			if (this.busy) {
-				return;
-			}
-			new Notice('Force 同步尚未实现');
+			void this.handleForce();
 		});
 
 		const updateBtn = footer.createEl('button', {
 			cls: 'dta-sync-footer-btn mod-success',
 			text: 'Update',
-			attr: { title: '将勾选的卡片同步到 Anki' },
+			attr: { title: '同步勾选卡片（跳过已同步）' },
 		});
 		this.updateBtnEl = updateBtn;
 		updateBtn.addEventListener('click', () => {
@@ -379,7 +377,9 @@ export class SyncPanelModal extends Modal {
 			this.busy === 'check' ? 'loader-circle' : 'scan-search',
 		);
 		this.checkBtnEl.title =
-			this.busy === 'check' ? '检测中…' : '对照 Anki 检测卡片同步状态';
+			this.busy === 'check'
+				? '检测中…'
+				: '对照 Anki 检测勾选卡片的同步状态';
 
 		this.refreshBtnEl.toggleClass('is-loading', this.busy === 'reload');
 		setIcon(
@@ -519,7 +519,6 @@ export class SyncPanelModal extends Modal {
 					this.viewRoot,
 					statusSnapshot.selectedKeys,
 				);
-				this.state.applyStatusToSelection(cards);
 				if (result.warning) {
 					this.statusEl.setText(result.warning);
 					options?.progress?.setMessage(result.warning);
@@ -1177,26 +1176,34 @@ export class SyncPanelModal extends Modal {
 	}
 
 	/**
-	 * Compare the current tree against Anki (toolbar 检查).
-	 * Does not run on open / refresh — only on demand.
+	 * Compare selected cards against Anki (toolbar 检查).
+	 * Does not change checkbox selection.
 	 */
 	private async handleCheckStatus(): Promise<void> {
 		if (!this.viewRoot) {
 			new Notice('没有可检查的牌组');
 			return;
 		}
+		const cards = this.collectSelectedCards();
+		if (cards.length === 0) {
+			new Notice('请先勾选要检测的卡片');
+			this.statusEl.setText('未勾选卡片');
+			return;
+		}
 		if (!this.setBusy('check')) {
 			return;
 		}
 
-		const progress = new ProgressNotice('正在对照 Anki 检测同步状态…');
-		this.statusEl.setText('正在对照 Anki 检测同步状态…');
+		const progress = new ProgressNotice(
+			`正在检测 ${cards.length} 张勾选卡片…`,
+		);
+		this.statusEl.setText(`正在检测 ${cards.length} 张勾选卡片…`);
 		this.setPanelProgress(0, 1, '准备检测…');
 		try {
-			const result = await prefetchSyncStatus(
+			const result = await prefetchSyncStatusForCards(
 				this.app,
 				this.plugin.settings,
-				this.viewRoot,
+				cards,
 				async (p) => {
 					this.setPanelProgress(p.current, p.total, p.label);
 					progress.setMessage(p.label);
@@ -1207,7 +1214,6 @@ export class SyncPanelModal extends Modal {
 				},
 			);
 			this.ankiStatusChecked = true;
-			this.state.reselectByStatus(this.viewRoot);
 			this.renderBody();
 
 			if (result.warning) {
@@ -1216,11 +1222,7 @@ export class SyncPanelModal extends Modal {
 				return;
 			}
 
-			const hint =
-				result.deletedCount > 0
-					? `，发现仅 Anki 存在 ${result.deletedCount} 条`
-					: '';
-			const summary = `状态检测完成${hint}`;
+			const summary = `状态检测完成（${cards.length} 张）`;
 			this.statusEl.setText(summary);
 			this.setPanelProgress(1, 1, summary);
 			progress.finish(summary);
@@ -1280,11 +1282,41 @@ export class SyncPanelModal extends Modal {
 		return out;
 	}
 
-	/** Sync checked cards to Anki (Update button). */
+	/** Sync checked cards to Anki (Update：跳过已同步). */
 	private async handleUpdate(): Promise<void> {
-		const cards = this.collectSelectedCards();
+		await this.syncSelectedCards({
+			skipSynced: true,
+			actionLabel: 'Update',
+		});
+	}
+
+	/** Force sync checked cards (含已同步，不跳过). */
+	private async handleForce(): Promise<void> {
+		await this.syncSelectedCards({
+			skipSynced: false,
+			actionLabel: 'Force',
+		});
+	}
+
+	private async syncSelectedCards(options: {
+		skipSynced: boolean;
+		actionLabel: string;
+	}): Promise<void> {
+		const selectedCards = this.collectSelectedCards();
 		const deleted = this.collectSelectedDeleted();
+		const cards = options.skipSynced
+			? selectedCards.filter((c) => !shouldSkipOnUpdate(c.syncStatus))
+			: selectedCards;
+		const skipped = selectedCards.length - cards.length;
+
 		if (cards.length === 0 && deleted.length === 0) {
+			if (options.skipSynced && selectedCards.length > 0) {
+				new Notice(
+					`已勾选 ${selectedCards.length} 张均为已同步，Update 已跳过（可用 Force 强制同步）`,
+				);
+				this.statusEl.setText('全部为已同步，已跳过');
+				return;
+			}
 			new Notice('请先勾选要同步的卡片');
 			this.statusEl.setText('未勾选卡片');
 			return;
@@ -1293,7 +1325,8 @@ export class SyncPanelModal extends Modal {
 			return;
 		}
 
-		const startMsg = `正在同步 ${cards.length} 张、删除 ${deleted.length} 条…`;
+		const skipHint = skipped > 0 ? `，跳过已同步 ${skipped}` : '';
+		const startMsg = `${options.actionLabel}：同步 ${cards.length} 张、删除 ${deleted.length} 条${skipHint}…`;
 		const progress = new ProgressNotice(startMsg);
 		this.statusEl.setText(startMsg);
 
@@ -1338,10 +1371,14 @@ export class SyncPanelModal extends Modal {
 				emptyDecksDeleted > 0
 					? `，清理空牌组 ${emptyDecksDeleted}`
 					: '';
-			const summary = `Anki 同步：成功 ${ok}，失败 ${fail}${cleanupHint}`;
+			const skippedHint = skipped > 0 ? `，跳过 ${skipped}` : '';
+			const summary = `${options.actionLabel}：成功 ${ok}，失败 ${fail}${cleanupHint}${skippedHint}`;
 			this.statusEl.setText(summary);
 			if (warnings.length > 0) {
-				console.warn('[Deck To Anki] Update sync warnings', warnings);
+				console.warn(
+					`[Deck To Anki] ${options.actionLabel} sync warnings`,
+					warnings,
+				);
 			}
 			progress.setMessage(`${summary}，刷新中…`);
 			await this.reload({
