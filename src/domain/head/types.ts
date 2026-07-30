@@ -60,6 +60,10 @@ export interface CardNode {
 	deckBacklinkTrail?: DeckBacklinkSegment[];
 	/** Filled by sync-panel Anki status prefetch. */
 	syncStatus?: SyncCardStatus;
+	/** 1-based index among sibling cards under the same parent deck. */
+	siblingIndex?: number;
+	/** Ancestor deck sibling indexes (excludes root), e.g. [1, 2]. */
+	deckIndexPath?: number[];
 }
 
 /**
@@ -74,6 +78,8 @@ export interface DeletedAnkiCardNode {
 	front: string;
 	deckPath: string;
 	syncStatus: 'deleted';
+	/** 1-based index among sibling leaves under the same parent. */
+	siblingIndex?: number;
 }
 
 export type SyncTreeChild = DeckNode | CardNode | DeletedAnkiCardNode;
@@ -94,6 +100,10 @@ export interface DeckNode {
 	 * When set, the sync tree shows a type badge and settings control.
 	 */
 	deckType?: DeckType;
+	/** 1-based index among sibling decks under the same parent. */
+	siblingIndex?: number;
+	/** This deck's index path from root children, e.g. [1, 2]. */
+	deckIndexPath?: number[];
 }
 
 export interface ParsedHeadFile {
@@ -111,6 +121,10 @@ export interface ParsedHeadFile {
 	yamlDeckLevel?: number;
 	/** YAML deckTemplate (Anki note type), if any. */
 	yamlDeckTemplate?: string;
+	/** YAML deckNumbering override, if declared. */
+	yamlDeckNumbering?: boolean;
+	/** YAML cardNumbering override, if declared. */
+	yamlCardNumbering?: boolean;
 	/** YAML deckStatus: true = archived, false = learning. */
 	deckStatus: boolean;
 	root: DeckNode;

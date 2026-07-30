@@ -11,6 +11,7 @@ import {
 } from './backlink';
 import { cleanupEmptyAnkiDecks } from './cleanupEmptyDecks';
 import { ensureDeckTemplateModel } from './ensureModel';
+import { resolveNumberingOptions } from './numbering';
 import { dedupeMediaAssets } from './processMedia';
 import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
@@ -22,6 +23,10 @@ import {
 	type DeckTemplateId,
 } from './templates';
 import { writeCardIdMarker } from './writeIdMarker';
+import {
+	formatCardNumberPrefix,
+	numberBacklinkSegmentNames,
+} from '../domain/head/siblingIndex';
 
 export interface SyncCardResult {
 	noteId: number;
@@ -284,6 +289,9 @@ export async function syncCardToAnki(
 		await client.storeMediaFiles(media);
 	}
 
+	const numbering = resolveNumberingOptions(meta, settings);
+	const numberPrefix = formatCardNumberPrefix(card, numbering);
+
 	let deckBacklinkHtml = '';
 	let warning: string | undefined;
 	if (settings.deckBacklinkEnabled) {
@@ -295,7 +303,17 @@ export async function syncCardToAnki(
 			noteContent,
 		});
 		warning = link.warning;
-		deckBacklinkHtml = buildDeckBacklinkHtml(link.segments);
+		const numbered = numberBacklinkSegmentNames(
+			link.segments.map((s) => s.name),
+			card.deckIndexPath,
+			numbering.deckNumbering,
+		);
+		deckBacklinkHtml = buildDeckBacklinkHtml(
+			link.segments.map((seg, i) => ({
+				...seg,
+				name: numbered[i] ?? seg.name,
+			})),
+		);
 	}
 
 	const tags = settings.deckTagsEnabled
@@ -307,7 +325,7 @@ export async function syncCardToAnki(
 			: '';
 
 	const fields: Record<string, string> = {
-		[FIELD_FRONT]: front.html,
+		[FIELD_FRONT]: `${numberPrefix}${front.html}`,
 		[FIELD_BACK]: back.html,
 		[FIELD_BACKLINK]: deckBacklinkHtml,
 		[FIELD_TAGS]: tagsHtml,

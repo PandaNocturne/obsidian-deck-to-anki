@@ -22,6 +22,10 @@ export interface FileDeckSettingsValues {
 	deckStatus: boolean;
 	/** Anki note type stored as YAML deckTemplate. */
 	deckTemplate: DeckTemplateId;
+	/** YAML deckNumbering — sync deck sibling indexes. */
+	deckNumbering: boolean;
+	/** YAML cardNumbering — sync card sibling indexes. */
+	cardNumbering: boolean;
 }
 
 export interface FileDeckSettingsOptions {
@@ -106,7 +110,9 @@ export class FileDeckSettingsModal extends Modal {
 			this.draft.deckName !== this.initial.deckName ||
 			this.draft.deckLevel !== this.initial.deckLevel ||
 			this.draft.deckStatus !== this.initial.deckStatus ||
-			this.draft.deckTemplate !== this.initial.deckTemplate
+			this.draft.deckTemplate !== this.initial.deckTemplate ||
+			this.draft.deckNumbering !== this.initial.deckNumbering ||
+			this.draft.cardNumbering !== this.initial.cardNumbering
 		);
 	}
 
@@ -135,7 +141,7 @@ export class FileDeckSettingsModal extends Modal {
 		if (this.draft.deckType === 'none') {
 			contentEl.createEl('p', {
 				cls: 'dta-file-settings-hint',
-				text: 'Save 将删除：deckType、deckName、deckLevel、deckStatus、deckFile、deckTemplate。',
+				text: 'Save 将删除：deckType、deckName、deckLevel、deckStatus、deckFile、deckTemplate、deckNumbering、cardNumbering。',
 			});
 		} else {
 			new Setting(contentEl)
@@ -191,6 +197,32 @@ export class FileDeckSettingsModal extends Modal {
 					toggle.setValue(this.draft.deckStatus).onChange((value) => {
 						this.draft.deckStatus = value;
 					}),
+				);
+
+			new Setting(contentEl)
+				.setName('牌组编号')
+				.setDesc(
+					'YAML: deckNumbering — 同步时把牌组同级序号写入 Anki（正面 / 回链）',
+				)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.draft.deckNumbering)
+						.onChange((value) => {
+							this.draft.deckNumbering = value;
+						}),
+				);
+
+			new Setting(contentEl)
+				.setName('卡片编号')
+				.setDesc(
+					'YAML: cardNumbering — 同步时把卡片同级序号写入 Anki 正面',
+				)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(this.draft.cardNumbering)
+						.onChange((value) => {
+							this.draft.cardNumbering = value;
+						}),
 				);
 		}
 
@@ -250,6 +282,8 @@ export class FileDeckSettingsModal extends Modal {
 					: undefined,
 			deckStatus: this.draft.deckStatus,
 			deckTemplate: this.draft.deckTemplate,
+			deckNumbering: this.draft.deckNumbering,
+			cardNumbering: this.draft.cardNumbering,
 		});
 
 		if (next === content) {

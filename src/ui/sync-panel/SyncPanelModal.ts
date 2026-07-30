@@ -9,6 +9,8 @@ import type {
 import { parseNoteFile } from '../../domain/parseNote';
 import { resolveDeckFileParent } from '../../domain/resolveWikiFile';
 import { parseVaultDeckForest } from '../../domain/scanDeckNotes';
+import { assignSiblingIndexes } from '../../domain/head/siblingIndex';
+import { resolveNumberingOptions } from '../../anki/numbering';
 import type DeckToAnkiPlugin from '../../../main';
 import { AnkiConnectClient } from '../../anki/AnkiConnectClient';
 import {
@@ -40,6 +42,8 @@ interface SessionDeckSettings {
 	deckLevel: number;
 	deckStatus: boolean;
 	deckTemplate: DeckTemplateId;
+	deckNumbering: boolean;
+	cardNumbering: boolean;
 }
 
 function asDeckTemplateId(
@@ -246,7 +250,7 @@ export class SyncPanelModal extends Modal {
 			},
 		});
 		this.checkBtnEl = checkBtn;
-		setIcon(checkBtn, 'scan-search');
+		setIcon(checkBtn, 'info');
 		checkBtn.addEventListener('click', () => {
 			void this.handleCheckStatus();
 		});
@@ -379,7 +383,7 @@ export class SyncPanelModal extends Modal {
 		this.checkBtnEl.toggleClass('is-loading', this.busy === 'check');
 		setIcon(
 			this.checkBtnEl,
-			this.busy === 'check' ? 'loader-circle' : 'scan-search',
+			this.busy === 'check' ? 'loader-circle' : 'info',
 		);
 		this.checkBtnEl.title =
 			this.busy === 'check'
@@ -729,6 +733,7 @@ export class SyncPanelModal extends Modal {
 			selectOnly: focusNode ?? undefined,
 			preserveCollapse: options?.preserveCollapse === true,
 		});
+		assignSiblingIndexes(parsed.root);
 	}
 
 	private async reloadForest(
@@ -756,6 +761,31 @@ export class SyncPanelModal extends Modal {
 			cardLevel: this.defaultCardHeadingLevel(),
 			preserveCollapse: options?.preserveCollapse === true,
 		});
+		assignSiblingIndexes(result.root);
+	}
+
+	private resolvePanelNumbering(): {
+		deckNumbering: boolean;
+		cardNumbering: boolean;
+	} {
+		if (this.state.tab === 'current') {
+			if (this.sessionOverride) {
+				return {
+					deckNumbering: this.sessionOverride.deckNumbering,
+					cardNumbering: this.sessionOverride.cardNumbering,
+				};
+			}
+			if (this.parsed) {
+				return resolveNumberingOptions(
+					{
+						deckNumbering: this.parsed.yamlDeckNumbering,
+						cardNumbering: this.parsed.yamlCardNumbering,
+					},
+					this.plugin.settings,
+				);
+			}
+		}
+		return resolveNumberingOptions({}, this.plugin.settings);
 	}
 
 	private renderBody(): void {
@@ -809,6 +839,7 @@ export class SyncPanelModal extends Modal {
 			);
 		}
 
+		const numbering = this.resolvePanelNumbering();
 		const treeOptions = {
 			parseType:
 				this.parsed?.deckType ??
@@ -819,6 +850,8 @@ export class SyncPanelModal extends Modal {
 			skipRootRow: isForest || this.parsed?.deckType === 'card',
 			busy: this.busy !== null,
 			busyNodeId: this.busyNodeId,
+			showDeckNumbers: numbering.deckNumbering,
+			showCardNumbers: numbering.cardNumbering,
 		};
 
 		if (
@@ -907,6 +940,10 @@ export class SyncPanelModal extends Modal {
 	): Promise<void> {
 		if (!this.setBusy('sync', node.id)) {
 			return;
+		}
+
+		if (this.viewRoot) {
+			assignSiblingIndexes(this.viewRoot);
 		}
 
 		try {
@@ -1163,6 +1200,10 @@ export class SyncPanelModal extends Modal {
 
 		const fallbackLevel = this.defaultCardHeadingLevel();
 		const fallbackTemplate = this.plugin.settings.deckTemplate;
+		const defaultNumbering = resolveNumberingOptions(
+			{},
+			this.plugin.settings,
+		);
 		let deckType: DeckType = deck.deckType ?? this.state.parseType ?? 'head';
 		let deckName = '';
 		let deckLevel = fallbackLevel;
@@ -1171,6 +1212,8 @@ export class SyncPanelModal extends Modal {
 			noteParsed?.yamlDeckTemplate,
 			fallbackTemplate,
 		);
+		let deckNumbering = defaultNumbering.deckNumbering;
+		let cardNumbering = defaultNumbering.cardNumbering;
 
 		if (isCurrentRoot && this.parsed) {
 			if (this.sessionOverride) {
@@ -1179,6 +1222,8 @@ export class SyncPanelModal extends Modal {
 				deckLevel = this.sessionOverride.deckLevel;
 				deckStatus = this.sessionOverride.deckStatus;
 				deckTemplate = this.sessionOverride.deckTemplate;
+				deckNumbering = this.sessionOverride.deckNumbering;
+				cardNumbering = this.sessionOverride.cardNumbering;
 			} else {
 				deckType = this.state.parseType;
 				deckName = this.parsed.yamlDeckName ?? '';
@@ -1188,6 +1233,15 @@ export class SyncPanelModal extends Modal {
 					this.parsed.yamlDeckTemplate,
 					fallbackTemplate,
 				);
+				const n = resolveNumberingOptions(
+					{
+						deckNumbering: this.parsed.yamlDeckNumbering,
+						cardNumbering: this.parsed.yamlCardNumbering,
+					},
+					this.plugin.settings,
+				);
+				deckNumbering = n.deckNumbering;
+				cardNumbering = n.cardNumbering;
 			}
 		} else {
 			const childOverride = this.childOverrides.get(file.path);
@@ -1197,6 +1251,8 @@ export class SyncPanelModal extends Modal {
 				deckLevel = childOverride.deckLevel;
 				deckStatus = childOverride.deckStatus;
 				deckTemplate = childOverride.deckTemplate;
+				deckNumbering = childOverride.deckNumbering;
+				cardNumbering = childOverride.cardNumbering;
 			} else {
 				const content = await this.app.vault.cachedRead(file);
 				const meta = parseFrontmatter(content);
@@ -1208,6 +1264,9 @@ export class SyncPanelModal extends Modal {
 					meta.deckTemplate,
 					fallbackTemplate,
 				);
+				const n = resolveNumberingOptions(meta, this.plugin.settings);
+				deckNumbering = n.deckNumbering;
+				cardNumbering = n.cardNumbering;
 				if (
 					deckType === 'file' &&
 					!isForestNoteRoot &&
@@ -1222,7 +1281,15 @@ export class SyncPanelModal extends Modal {
 		openFileDeckSettings(
 			this.plugin,
 			file,
-			{ deckType, deckName, deckLevel, deckStatus, deckTemplate },
+			{
+				deckType,
+				deckName,
+				deckLevel,
+				deckStatus,
+				deckTemplate,
+				deckNumbering,
+				cardNumbering,
+			},
 			async (values, result) => {
 				if (values.deckType === 'none') {
 					if (result.persisted) {
@@ -1246,6 +1313,8 @@ export class SyncPanelModal extends Modal {
 							deckLevel: values.deckLevel,
 							deckStatus: values.deckStatus,
 							deckTemplate: values.deckTemplate,
+							deckNumbering: values.deckNumbering,
+							cardNumbering: values.cardNumbering,
 						};
 						new Notice(
 							`已切换解析为 ${values.deckType}（未写入 YAML，可用 Update/Save 保存）`,
@@ -1260,6 +1329,8 @@ export class SyncPanelModal extends Modal {
 						deckLevel: values.deckLevel,
 						deckStatus: values.deckStatus,
 						deckTemplate: values.deckTemplate,
+						deckNumbering: values.deckNumbering,
+						cardNumbering: values.cardNumbering,
 					});
 					new Notice(
 						`子笔记已按 ${values.deckType} 解析（未写入 YAML）`,
@@ -1422,6 +1493,10 @@ export class SyncPanelModal extends Modal {
 		}
 		if (!this.setBusy('sync')) {
 			return;
+		}
+
+		if (this.viewRoot) {
+			assignSiblingIndexes(this.viewRoot);
 		}
 
 		const skipHint = skipped > 0 ? `，跳过已同步 ${skipped}` : '';

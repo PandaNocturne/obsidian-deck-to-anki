@@ -55,6 +55,16 @@ export interface DeckToAnkiSettings {
 	 * background (tree renders first). Default on.
 	 */
 	autoCheckCurrentNote: boolean;
+	/**
+	 * Sync deck sibling indexes into Anki front / backlink (e.g. `1.2. `).
+	 * Notes may override via YAML `deckNumbering`. Default on.
+	 */
+	deckNumberingEnabled: boolean;
+	/**
+	 * Sync card sibling indexes into Anki front. Notes may override via
+	 * YAML `cardNumbering`. Default off.
+	 */
+	cardNumberingEnabled: boolean;
 	includeFolders: string[];
 	requireDeckTag: boolean;
 }
@@ -74,6 +84,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
+	deckNumberingEnabled: true,
+	cardNumberingEnabled: false,
 	includeFolders: [],
 	requireDeckTag: true,
 };
@@ -231,6 +243,34 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.autoCheckCurrentNote !== false)
 					.onChange(async (value) => {
 						this.plugin.settings.autoCheckCurrentNote = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('同步牌组编号')
+			.setDesc(
+				'将牌组同级序号写入 Anki（正面前缀 / 回链，如 1.2. ）。笔记可用 YAML deckNumbering 覆盖。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckNumberingEnabled !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.deckNumberingEnabled = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(containerEl)
+			.setName('同步卡片编号')
+			.setDesc(
+				'将卡片同级序号写入 Anki 正面（如 3. 或与牌组编号组合为 1.2.3. ）。YAML: cardNumbering。默认关闭。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.cardNumberingEnabled === true)
+					.onChange(async (value) => {
+						this.plugin.settings.cardNumberingEnabled = value;
 						await this.plugin.saveSettings();
 					}),
 			);

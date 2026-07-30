@@ -41,6 +41,8 @@ export function parseCardFile(
 		yamlDeckName: meta.deckName,
 		yamlDeckLevel: meta.deckLevel,
 		yamlDeckTemplate: meta.deckTemplate,
+		yamlDeckNumbering: meta.deckNumbering,
+		yamlCardNumbering: meta.cardNumbering,
 		deckStatus: meta.deckStatus,
 		root,
 		warnings,

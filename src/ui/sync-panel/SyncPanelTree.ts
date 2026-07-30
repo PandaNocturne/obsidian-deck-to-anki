@@ -44,6 +44,10 @@ export interface SyncPanelTreeOptions {
 	busy?: boolean;
 	/** Node id whose sync button should show a spinner. */
 	busyNodeId?: string | null;
+	/** Show deck sibling indexes in the tree (default true). */
+	showDeckNumbers?: boolean;
+	/** Show card sibling indexes in the tree (default false). */
+	showCardNumbers?: boolean;
 }
 
 function bindSyncActionButton(
@@ -254,7 +258,12 @@ function renderDeck(
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	const nameEl = nameSlot.createSpan({
 		cls: 'dta-sync-name',
-		text: formatDeckLabel(deck.name, depth, siblingIndex),
+		text: formatDeckLabel(
+			deck.name,
+			depth,
+			siblingIndex ?? deck.siblingIndex ?? null,
+			options.showDeckNumbers !== false,
+		),
 	});
 	nameEl.setAttribute(
 		'title',
@@ -372,11 +381,13 @@ function renderDeletedCard(
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
 	setIcon(icon, 'trash-2');
 
-	row.createSpan({
-		cls: 'dta-sync-card-index',
-		text: `${siblingIndex}.`,
-		attr: { title: '虚拟编号（仅排序可视化）' },
-	});
+	if (options.showCardNumbers === true) {
+		row.createSpan({
+			cls: 'dta-sync-card-index',
+			text: `${card.siblingIndex ?? siblingIndex}.`,
+			attr: { title: '卡片编号' },
+		});
+	}
 
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({
@@ -461,12 +472,13 @@ function renderCard(
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
 	setIcon(icon, resolveCardIcon(card.deckClass));
 
-	// Virtual index for sort/display only — not part of card content.
-	row.createSpan({
-		cls: 'dta-sync-card-index',
-		text: `${siblingIndex}.`,
-		attr: { title: '虚拟编号（仅排序可视化）' },
-	});
+	if (options.showCardNumbers === true) {
+		row.createSpan({
+			cls: 'dta-sync-card-index',
+			text: `${card.siblingIndex ?? siblingIndex}.`,
+			attr: { title: '卡片编号' },
+		});
+	}
 
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({
@@ -568,8 +580,9 @@ function formatDeckLabel(
 	name: string,
 	depth: number,
 	siblingIndex: number | null,
+	showDeckNumbers: boolean,
 ): string {
-	if (depth === 0 || siblingIndex === null) {
+	if (depth === 0 || siblingIndex === null || !showDeckNumbers) {
 		return name;
 	}
 	return `${siblingIndex}. ${name}`;

@@ -15,6 +15,7 @@ import {
 	resolveSourceFile,
 	toAnkiDeckName,
 } from './backlink';
+import { resolveNumberingOptions } from './numbering';
 import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
 	DECK_TEMPLATE_IDS,
@@ -24,6 +25,11 @@ import {
 	FIELD_TAGS,
 	type DeckTemplateId,
 } from './templates';
+import {
+	formatCardNumberPrefix,
+	numberBacklinkSegmentNames,
+	assignSiblingIndexes,
+} from '../domain/head/siblingIndex';
 
 export interface AnkiComparablePayload {
 	deckName: string;
@@ -204,6 +210,9 @@ export async function buildComparablePayload(
 		renderFieldWithMedia(app, card.back, filePath),
 	]);
 
+	const numbering = resolveNumberingOptions(meta, settings);
+	const numberPrefix = formatCardNumberPrefix(card, numbering);
+
 	let deckBacklinkHtml = '';
 	if (settings.deckBacklinkEnabled) {
 		const link = await buildDeckSegmentUris({
@@ -213,7 +222,17 @@ export async function buildComparablePayload(
 			uidProperty: settings.advUriUidProperty || 'uid',
 			noteContent,
 		});
-		deckBacklinkHtml = buildDeckBacklinkHtml(link.segments);
+		const numbered = numberBacklinkSegmentNames(
+			link.segments.map((s) => s.name),
+			card.deckIndexPath,
+			numbering.deckNumbering,
+		);
+		deckBacklinkHtml = buildDeckBacklinkHtml(
+			link.segments.map((seg, i) => ({
+				...seg,
+				name: numbered[i] ?? seg.name,
+			})),
+		);
 	}
 
 	const tags = settings.deckTagsEnabled
@@ -228,7 +247,7 @@ export async function buildComparablePayload(
 		deckName,
 		modelName,
 		fields: {
-			[FIELD_FRONT]: front.html,
+			[FIELD_FRONT]: `${numberPrefix}${front.html}`,
 			[FIELD_BACK]: back.html,
 			[FIELD_BACKLINK]: deckBacklinkHtml,
 			[FIELD_TAGS]: tagsHtml,
@@ -431,6 +450,7 @@ export function restoreSyncStatusTree(
 	}
 
 	recountLocalCards(root);
+	assignSiblingIndexes(root);
 }
 
 export function findCardsByIdentityKeys(
@@ -784,6 +804,7 @@ export async function prefetchSyncStatus(
 	}
 
 	recountLocalCards(root);
+	assignSiblingIndexes(root);
 	await reportProgress(onProgress, total, total, '检测完成');
 	return { ankiOnline: true, deletedCount };
 }

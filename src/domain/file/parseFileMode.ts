@@ -101,7 +101,7 @@ export interface ParseFileModeContext {
 	/** Head ---: include heading in card front for child head notes. */
 	includeHeadingInFront?: boolean;
 	/**
-	 * Session overrides for child notes (path â†’ forced deckType).
+	 * Session overrides for child notes (path â??forced deckType).
 	 * Does not write YAML; skips auto-write when present.
 	 */
 	childTypeOverrides?: Map<string, Exclude<DeckType, 'file'>>;
@@ -117,9 +117,9 @@ interface ResolvedChildMode {
 
 /**
  * Resolve child note deckType:
- * - missing â†’ auto-write YAML deckType: head
- * - file â†’ not allowed for nesting; parse as head (YAML type unchanged)
- * - head / card / list â†’ use as-is
+ * - missing â??auto-write YAML deckType: head
+ * - file â??not allowed for nesting; parse as head (YAML type unchanged)
+ * - head / card / list â??use as-is
  * Always ensure deckFile: [[parent]] indexes the file-mode parent.
  */
 async function resolveChildDeckMode(
@@ -210,7 +210,7 @@ export async function parseFileMode(
 			filePath,
 		);
 		if (!dest || dest.extension !== 'md') {
-			warnings.push(`æœªè§£æé“¾æ¥: ${ref.linkpath}`);
+			warnings.push(`æ?ªè§£æ?é?¾æ?? ${ref.linkpath}`);
 			continue;
 		}
 		if (dest.path === filePath) {
@@ -258,11 +258,11 @@ export async function parseFileMode(
 		const flattenSoleH1 = Boolean(soleH1);
 
 		if (resolved.autoSetHead) {
-			warnings.push(`${childName}: å·²è‡ªåŠ¨å†™å…¥ deckType: head / deckFile`);
+			warnings.push(`${childName}: å·²è?ªå?¨å??å??deckType: head / deckFile`);
 		}
 		if (resolved.forcedFromFile) {
 			warnings.push(
-				`${childName}: å­ç¬”è®°ä¸æ”¯æŒ file åµŒå¥—ï¼Œå·²æŒ‰ head è§£æ`,
+				`${childName}: å­ç¬?è®°ä¸æ?¯æ? file åµ?å¥?ï¼?å·²æ??head è§£æ?`,
 			);
 		}
 
@@ -289,7 +289,7 @@ export async function parseFileMode(
 				...parsedCard.warnings.map((w) => `${childName}: ${w}`),
 			);
 			if (parsedCard.card) {
-				// Card notes are leaves under the file deck â€” no nested deck row.
+				// Card notes are leaves under the file deck â??no nested deck row.
 				root.children.push(parsedCard.card);
 			}
 			continue;
@@ -336,7 +336,7 @@ export async function parseFileMode(
 	recountCards(root);
 
 	if (root.children.length === 0) {
-		warnings.push('æœªæ‰¾åˆ°å¯è§£æçš„å…³è”ç¬”è®°é“¾æ¥');
+		warnings.push('?????????????');
 	}
 
 	return {
@@ -349,6 +349,8 @@ export async function parseFileMode(
 		yamlDeckName: meta.deckName,
 		yamlDeckLevel: meta.deckLevel,
 		yamlDeckTemplate: meta.deckTemplate,
+		yamlDeckNumbering: meta.deckNumbering,
+		yamlCardNumbering: meta.cardNumbering,
 		deckStatus: meta.deckStatus,
 		root,
 		warnings,
