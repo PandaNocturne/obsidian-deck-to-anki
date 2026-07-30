@@ -38,6 +38,11 @@ export async function writeCardIdMarker(
 		insertAt -= 1;
 	}
 
-	lines.splice(insertAt, 0, marker);
+	// Keep one blank line between body and <!--ID: ...-->.
+	if (insertAt < lines.length && !(lines[insertAt] ?? '').trim()) {
+		lines.splice(insertAt + 1, 0, marker);
+	} else {
+		lines.splice(insertAt, 0, '', marker);
+	}
 	await app.vault.modify(file, lines.join('\n'));
 }
