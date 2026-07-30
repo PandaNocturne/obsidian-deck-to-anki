@@ -1,6 +1,7 @@
 import { parseFrontmatter } from '../../domain/head/frontmatter';
 import type {
 	CardNode,
+	DeletedAnkiCardNode,
 	DeckNode,
 	DeckType,
 	ParsedHeadFile,
@@ -15,6 +16,7 @@ import {
 	type DeckTemplateId,
 } from '../../anki/templates';
 import { syncCardListToAnki, syncNodesToAnki } from '../../anki/syncCard';
+import { prefetchSyncStatus } from '../../anki/syncStatus';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
@@ -46,6 +48,9 @@ function findChildNoteNode(
 	childFilePath: string,
 ): DeckNode | CardNode | null {
 	for (const child of root.children) {
+		if (child.kind === 'deleted-anki') {
+			continue;
+		}
 		if (child.sourceFilePath !== childFilePath) {
 			continue;
 		}
@@ -65,6 +70,9 @@ function findChildNoteNode(
 				) {
 					return child;
 				}
+				continue;
+			}
+			if (child.kind !== 'deck') {
 				continue;
 			}
 			if (
@@ -358,6 +366,15 @@ export class SyncPanelModal extends Modal {
 			];
 		}
 
+		const status = await prefetchSyncStatus(
+			this.app,
+			this.plugin.settings,
+			parsed.root,
+		);
+		if (status.warning) {
+			this.forestWarnings = [...this.forestWarnings, status.warning];
+		}
+
 		this.state.resetFromTree(parsed.root, {
 			parseType:
 				(useSessionOnParseTarget
@@ -387,6 +404,16 @@ export class SyncPanelModal extends Modal {
 		this.forestItems = result.items;
 		this.forestWarnings = result.warnings;
 		this.focusChildLabel = null;
+
+		const status = await prefetchSyncStatus(
+			this.app,
+			this.plugin.settings,
+			result.root,
+		);
+		if (status.warning) {
+			this.forestWarnings = [...this.forestWarnings, status.warning];
+		}
+
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
 			cardLevel: this.defaultCardHeadingLevel(),
@@ -535,7 +562,15 @@ export class SyncPanelModal extends Modal {
 		);
 	}
 
-	private async handleSyncNode(node: DeckNode | CardNode): Promise<void> {
+	private async handleSyncNode(
+		node: DeckNode | CardNode | DeletedAnkiCardNode,
+	): Promise<void> {
+		if (node.kind === 'deleted-anki') {
+			await this.deleteAnkiNotes([node.noteId], `已删除「${node.front.slice(0, 24)}」`);
+			await this.reload({ preserveTab: true });
+			return;
+		}
+
 		const label =
 			node.kind === 'deck'
 				? `牌组「${node.name}」`
@@ -570,6 +605,33 @@ export class SyncPanelModal extends Modal {
 			const msg = error instanceof Error ? error.message : String(error);
 			new Notice(`同步失败：${msg}`);
 			this.statusEl.setText(`同步失败：${msg}`);
+		}
+	}
+
+	private async deleteAnkiNotes(
+		noteIds: number[],
+		label: string,
+	): Promise<void> {
+		if (noteIds.length === 0) {
+			return;
+		}
+		const client = new AnkiConnectClient(
+			() =>
+				this.plugin.settings.ankiConnectUrl ||
+				'http://127.0.0.1:8765',
+		);
+		try {
+			await client.ping();
+			await client.deleteNotes(noteIds);
+			new Notice(`${label}：已从 Anki 删除 ${noteIds.length} 条`);
+			this.statusEl.setText(
+				`${label}：已从 Anki 删除 ${noteIds.length} 条`,
+			);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			new Notice(`删除 Anki 笔记失败：${msg}`);
+			this.statusEl.setText(`删除失败：${msg}`);
+			throw error;
 		}
 	}
 
@@ -836,11 +898,37 @@ export class SyncPanelModal extends Modal {
 			return [];
 		}
 		const out: CardNode[] = [];
-		const walk = (node: DeckNode | CardNode) => {
+		const walk = (node: DeckNode | CardNode | DeletedAnkiCardNode) => {
 			if (node.kind === 'card') {
 				if (this.state.isSelected(node.id)) {
 					out.push(node);
 				}
+				return;
+			}
+			if (node.kind === 'deleted-anki') {
+				return;
+			}
+			for (const child of node.children) {
+				walk(child);
+			}
+		};
+		walk(this.viewRoot);
+		return out;
+	}
+
+	private collectSelectedDeleted(): DeletedAnkiCardNode[] {
+		if (!this.viewRoot) {
+			return [];
+		}
+		const out: DeletedAnkiCardNode[] = [];
+		const walk = (node: DeckNode | CardNode | DeletedAnkiCardNode) => {
+			if (node.kind === 'deleted-anki') {
+				if (this.state.isSelected(node.id)) {
+					out.push(node);
+				}
+				return;
+			}
+			if (node.kind === 'card') {
 				return;
 			}
 			for (const child of node.children) {
@@ -854,31 +942,58 @@ export class SyncPanelModal extends Modal {
 	/** Sync checked cards to Anki (Update button). */
 	private async handleUpdate(): Promise<void> {
 		const cards = this.collectSelectedCards();
-		if (cards.length === 0) {
+		const deleted = this.collectSelectedDeleted();
+		if (cards.length === 0 && deleted.length === 0) {
 			new Notice('请先勾选要同步的卡片');
 			this.statusEl.setText('未勾选卡片');
 			return;
 		}
 
-		this.statusEl.setText(`正在同步 ${cards.length} 张卡片到 Anki…`);
-		const result = await syncCardListToAnki(
-			this.app,
-			this.plugin.settings,
-			cards,
-			{
-				persistSettings: () => this.plugin.saveSettings(),
-			},
+		this.statusEl.setText(
+			`正在同步 ${cards.length} 张、删除 ${deleted.length} 条…`,
 		);
 
+		let ok = 0;
+		let fail = 0;
+		let emptyDecksDeleted = 0;
+		const warnings: string[] = [];
+
+		if (cards.length > 0) {
+			const result = await syncCardListToAnki(
+				this.app,
+				this.plugin.settings,
+				cards,
+				{
+					persistSettings: () => this.plugin.saveSettings(),
+				},
+			);
+			ok += result.ok;
+			fail += result.fail;
+			emptyDecksDeleted += result.emptyDecksDeleted;
+			warnings.push(...result.warnings);
+		}
+
+		if (deleted.length > 0) {
+			try {
+				await this.deleteAnkiNotes(
+					deleted.map((d) => d.noteId),
+					'已删除条目',
+				);
+				ok += deleted.length;
+			} catch {
+				fail += deleted.length;
+			}
+		}
+
 		const cleanupHint =
-			result.emptyDecksDeleted > 0
-				? `，清理空牌组 ${result.emptyDecksDeleted}`
+			emptyDecksDeleted > 0
+				? `，清理空牌组 ${emptyDecksDeleted}`
 				: '';
-		const summary = `Anki 同步：成功 ${result.ok}，失败 ${result.fail}${cleanupHint}`;
+		const summary = `Anki 同步：成功 ${ok}，失败 ${fail}${cleanupHint}`;
 		new Notice(summary);
 		this.statusEl.setText(summary);
-		if (result.warnings.length > 0) {
-			console.warn('[Deck To Anki] Update sync warnings', result.warnings);
+		if (warnings.length > 0) {
+			console.warn('[Deck To Anki] Update sync warnings', warnings);
 		}
 		await this.reload({ preserveTab: true });
 	}

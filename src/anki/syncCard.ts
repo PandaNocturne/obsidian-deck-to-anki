@@ -46,7 +46,11 @@ export function collectCardsFromNode(
 	}
 	const out: CardNode[] = [];
 	for (const child of node.children) {
-		out.push(...collectCardsFromNode(child));
+		if (child.kind === 'card') {
+			out.push(child);
+		} else if (child.kind === 'deck') {
+			out.push(...collectCardsFromNode(child));
+		}
 	}
 	return out;
 }

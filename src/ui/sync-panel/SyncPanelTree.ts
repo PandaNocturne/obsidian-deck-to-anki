@@ -1,16 +1,19 @@
 import { setIcon } from 'obsidian';
+import { countSyncStatusInDeck } from '../../anki/syncStatus';
 import type {
 	CardNode,
 	DeckClass,
 	DeckNode,
 	DeckType,
+	DeletedAnkiCardNode,
+	SyncCardStatus,
 } from '../../domain/head/types';
-import type { SyncPanelState } from './SyncPanelState';
+import type { SyncPanelState, SyncSelectableNode } from './SyncPanelState';
 
 export interface SyncPanelTreeHandlers {
 	onToggleCollapse: (deckId: string) => void;
-	onToggleSelect: (node: DeckNode | CardNode, selected: boolean) => void;
-	onSyncStub: (node: DeckNode | CardNode) => void;
+	onToggleSelect: (node: SyncSelectableNode, selected: boolean) => void;
+	onSyncStub: (node: SyncSelectableNode) => void;
 	/** Open YAML settings for a note-level deck (root or file-mode child). */
 	onDeckSettings?: (deck: DeckNode) => void;
 	/**
@@ -56,7 +59,7 @@ export function renderSyncPanelTree(
 				renderDeck(list, child, state, handlers, options, 0, null);
 			} else {
 				cardSibling += 1;
-				renderCard(list, child, state, handlers, cardSibling);
+				renderLeaf(list, child, state, handlers, cardSibling);
 			}
 		}
 		return;
@@ -86,6 +89,58 @@ function resolveCardIcon(deckClass: DeckClass): string {
 		case 'head':
 		default:
 			return 'heading';
+	}
+}
+
+function statusCheckClass(status: SyncCardStatus | undefined): string {
+	switch (status) {
+		case 'synced':
+			return 'dta-sync-check--synced';
+		case 'modified':
+			return 'dta-sync-check--modified';
+		case 'deleted':
+			return 'dta-sync-check--deleted';
+		case 'unsynced':
+		default:
+			return 'dta-sync-check--unsynced';
+	}
+}
+
+function statusIdClass(status: SyncCardStatus | undefined): string {
+	switch (status) {
+		case 'synced':
+			return 'dta-sync-id--synced';
+		case 'modified':
+			return 'dta-sync-id--modified';
+		case 'deleted':
+			return 'dta-sync-id--deleted';
+		case 'unsynced':
+		default:
+			return 'dta-sync-id--unsynced';
+	}
+}
+
+function renderStatusBadges(
+	parent: HTMLElement,
+	counts: Record<SyncCardStatus, number>,
+): void {
+	const order: Array<{ key: SyncCardStatus; title: string }> = [
+		{ key: 'synced', title: '已同步' },
+		{ key: 'modified', title: '被修改' },
+		{ key: 'unsynced', title: '未同步' },
+		{ key: 'deleted', title: '已删除' },
+	];
+	const host = parent.createSpan({ cls: 'dta-sync-status-badges' });
+	for (const { key, title } of order) {
+		const n = counts[key];
+		if (n <= 0) {
+			continue;
+		}
+		host.createSpan({
+			cls: `dta-sync-status-badge dta-sync-status-badge--${key}`,
+			text: String(n),
+			attr: { title: `${title} ${n}` },
+		});
 	}
 }
 
@@ -191,6 +246,8 @@ function renderDeck(
 		text: String(deck.cardCount),
 	});
 
+	renderStatusBadges(row, countSyncStatusInDeck(deck));
+
 	if (showSettings) {
 		const settingsBtn = row.createEl('button', {
 			cls: 'dta-sync-action clickable-icon',
@@ -251,9 +308,90 @@ function renderDeck(
 			);
 		} else {
 			cardSibling += 1;
-			renderCard(childrenEl, child, state, handlers, cardSibling);
+			renderLeaf(childrenEl, child, state, handlers, cardSibling);
 		}
 	}
+}
+
+function renderLeaf(
+	parent: HTMLElement,
+	leaf: CardNode | DeletedAnkiCardNode,
+	state: SyncPanelState,
+	handlers: SyncPanelTreeHandlers,
+	siblingIndex: number,
+): void {
+	if (leaf.kind === 'deleted-anki') {
+		renderDeletedCard(parent, leaf, state, handlers, siblingIndex);
+		return;
+	}
+	renderCard(parent, leaf, state, handlers, siblingIndex);
+}
+
+function renderDeletedCard(
+	parent: HTMLElement,
+	card: DeletedAnkiCardNode,
+	state: SyncPanelState,
+	handlers: SyncPanelTreeHandlers,
+	siblingIndex: number,
+): void {
+	const row = parent.createDiv({
+		cls: 'dta-sync-row dta-sync-row--card dta-sync-row--deleted',
+	});
+	row.setAttribute('title', '仅存在于 Anki（本地已删除）');
+
+	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
+	setIcon(icon, 'trash-2');
+
+	row.createSpan({
+		cls: 'dta-sync-card-index',
+		text: `${siblingIndex}.`,
+		attr: { title: '虚拟编号（仅排序可视化）' },
+	});
+
+	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
+	nameSlot.createSpan({
+		cls: 'dta-sync-name is-deleted',
+		text: card.front,
+	});
+
+	const idEl = row.createSpan({
+		cls: `dta-sync-id ${statusIdClass('deleted')}`,
+		text: `ID ${card.noteId}`,
+		attr: {
+			title: handlers.onOpenInAnki
+				? '在 Anki 中打开此笔记'
+				: `Anki note id: ${card.noteId}`,
+		},
+	});
+	if (handlers.onOpenInAnki) {
+		idEl.addClass('is-clickable');
+		idEl.addEventListener('click', (evt) => {
+			evt.stopPropagation();
+			handlers.onOpenInAnki?.(card.noteId);
+		});
+	}
+
+	const syncBtn = row.createEl('button', {
+		cls: 'dta-sync-action clickable-icon',
+		attr: { 'aria-label': '从 Anki 删除', title: '从 Anki 删除' },
+	});
+	setIcon(syncBtn, 'trash-2');
+	syncBtn.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+		handlers.onSyncStub(card);
+	});
+
+	const checkbox = row.createEl('input', {
+		type: 'checkbox',
+		cls: `dta-sync-check ${statusCheckClass('deleted')}`,
+	});
+	checkbox.checked = state.isSelected(card.id);
+	checkbox.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+	});
+	checkbox.addEventListener('change', () => {
+		handlers.onToggleSelect(card, checkbox.checked);
+	});
 }
 
 function renderCard(
@@ -325,7 +463,7 @@ function renderCard(
 
 	if (card.noteId !== undefined) {
 		const idEl = row.createSpan({
-			cls: 'dta-sync-id',
+			cls: `dta-sync-id ${statusIdClass(card.syncStatus)}`,
 			text: `ID ${card.noteId}`,
 			attr: {
 				title: handlers.onOpenInAnki
@@ -342,7 +480,7 @@ function renderCard(
 		}
 	} else if (card.blockId) {
 		row.createSpan({
-			cls: 'dta-sync-id',
+			cls: `dta-sync-id ${statusIdClass(card.syncStatus ?? 'unsynced')}`,
 			text: `^${card.blockId}`,
 		});
 	}
@@ -389,7 +527,7 @@ function renderCard(
 
 	const checkbox = row.createEl('input', {
 		type: 'checkbox',
-		cls: 'dta-sync-check',
+		cls: `dta-sync-check ${statusCheckClass(card.syncStatus)}`,
 	});
 	checkbox.checked = state.isSelected(card.id);
 	checkbox.addEventListener('click', (evt) => {

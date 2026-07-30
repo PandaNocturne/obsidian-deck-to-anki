@@ -3,7 +3,14 @@ export type DeckType = 'head' | 'card' | 'file' | 'list';
 /** How a card was parsed (drives tree icon). Not the same as note-level file mode. */
 export type DeckClass = 'head' | 'list' | 'card';
 
-export type SyncPanelNodeKind = 'deck' | 'card';
+export type SyncPanelNodeKind = 'deck' | 'card' | 'deleted-anki';
+
+/** Relative to Anki: green / yellow / blue / red in the sync panel. */
+export type SyncCardStatus =
+	| 'synced'
+	| 'modified'
+	| 'unsynced'
+	| 'deleted';
 
 export interface IdMarkerInfo {
 	noteId: number;
@@ -51,7 +58,25 @@ export interface CardNode {
 	sourceFilePath?: string;
 	/** Per-deck crumbs for Anki backlink; falls back to deckPath + sourceFilePath. */
 	deckBacklinkTrail?: DeckBacklinkSegment[];
+	/** Filled by sync-panel Anki status prefetch. */
+	syncStatus?: SyncCardStatus;
 }
+
+/**
+ * Phantom row: note exists in Anki but not in the local vault tree.
+ * Syncing a selected deleted row removes it from Anki.
+ */
+export interface DeletedAnkiCardNode {
+	kind: 'deleted-anki';
+	id: string;
+	noteId: number;
+	/** Display title (from Anki front field, HTML stripped). */
+	front: string;
+	deckPath: string;
+	syncStatus: 'deleted';
+}
+
+export type SyncTreeChild = DeckNode | CardNode | DeletedAnkiCardNode;
 
 export interface DeckNode {
 	kind: 'deck';
@@ -62,7 +87,7 @@ export interface DeckNode {
 	/** -1 for file root (no heading line). */
 	lineStart: number;
 	cardCount: number;
-	children: Array<DeckNode | CardNode>;
+	children: SyncTreeChild[];
 	sourceFilePath?: string;
 	/**
 	 * Note-level deck type (root, or file-mode child note).

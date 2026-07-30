@@ -150,6 +150,13 @@ export class AnkiConnectClient {
 		return Array.isArray(ids) ? ids : [];
 	}
 
+	async deleteNotes(noteIds: number[]): Promise<void> {
+		if (noteIds.length === 0) {
+			return;
+		}
+		await this.invoke('deleteNotes', { notes: noteIds });
+	}
+
 	async notesInfo(noteIds: number[]): Promise<
 		Array<{
 			noteId: number;

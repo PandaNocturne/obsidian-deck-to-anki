@@ -142,9 +142,9 @@ function joinDeckPath(parts: string[]): string {
 export function recountCards(node: DeckNode): number {
 	let count = 0;
 	for (const child of node.children) {
-		if (child.kind === 'card') {
+		if (child.kind === 'card' || child.kind === 'deleted-anki') {
 			count += 1;
-		} else {
+		} else if (child.kind === 'deck') {
 			count += recountCards(child);
 		}
 	}
@@ -155,11 +155,14 @@ export function recountCards(node: DeckNode): number {
 /** Remove deck groups that contain no cards in their subtree (keep root). */
 export function pruneEmptyDecks(node: DeckNode): void {
 	node.children = node.children.filter((child) => {
-		if (child.kind === 'card') {
+		if (child.kind === 'card' || child.kind === 'deleted-anki') {
 			return true;
 		}
-		pruneEmptyDecks(child);
-		return child.cardCount > 0;
+		if (child.kind === 'deck') {
+			pruneEmptyDecks(child);
+			return child.cardCount > 0;
+		}
+		return false;
 	});
 }
 
@@ -172,7 +175,7 @@ export function repathDeckTree(
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
 			repathDeckTree(child, node.deckPath, parentTrailPrefix);
-		} else {
+		} else if (child.kind === 'card') {
 			child.deckPath = node.deckPath;
 			if (parentTrailPrefix.length > 0) {
 				child.deckBacklinkTrail = [
@@ -189,7 +192,7 @@ export function annotateSourceFile(node: DeckNode, sourceFilePath: string): void
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
 			annotateSourceFile(child, sourceFilePath);
-		} else {
+		} else if (child.kind === 'card') {
 			child.sourceFilePath = sourceFilePath;
 		}
 	}

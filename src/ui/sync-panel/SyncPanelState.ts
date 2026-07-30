@@ -1,14 +1,19 @@
 import { isHeadTitleOnlyCard } from '../../domain/head/isHeadTitleOnlyCard';
 import type {
 	CardNode,
+	DeletedAnkiCardNode,
 	DeckNode,
 	DeckType,
 	ParsedHeadFile,
+	SyncTreeChild,
 } from '../../domain/head/types';
+import { shouldSelectByStatus } from '../../anki/syncStatus';
 
 export type SyncPanelTab = 'current' | 'all' | 'archived';
 
 export type SyncCheckState = 'checked' | 'unchecked' | 'indeterminate';
+
+export type SyncSelectableNode = DeckNode | CardNode | DeletedAnkiCardNode;
 
 export class SyncPanelState {
 	readonly selected = new Set<string>();
@@ -26,7 +31,7 @@ export class SyncPanelState {
 			parseType?: DeckType;
 			cardLevel?: number;
 			/** When set, only this subtree is checked (not the whole tree). */
-			selectOnly?: DeckNode | CardNode;
+			selectOnly?: SyncSelectableNode;
 		},
 	): void {
 		this.root = root;
@@ -41,7 +46,6 @@ export class SyncPanelState {
 		this.collapseAllDecks(root);
 
 		if (options?.selectOnly) {
-			// Keep the tree collapsed; only pre-check the focus subtree.
 			this.selectAll(options.selectOnly);
 		} else {
 			this.selectAll(root);
@@ -56,16 +60,27 @@ export class SyncPanelState {
 		});
 	}
 
-	private selectAll(node: DeckNode | CardNode): void {
-		// Head cards with only a title (no body) stay unchecked by default.
+	private shouldSelectLeaf(
+		node: CardNode | DeletedAnkiCardNode,
+	): boolean {
 		if (node.kind === 'card' && isHeadTitleOnlyCard(node)) {
+			return false;
+		}
+		return shouldSelectByStatus(node.syncStatus);
+	}
+
+	private selectAll(node: SyncSelectableNode): void {
+		if (node.kind === 'card' || node.kind === 'deleted-anki') {
+			if (!this.shouldSelectLeaf(node)) {
+				return;
+			}
+			this.selected.add(node.id);
 			return;
 		}
+
 		this.selected.add(node.id);
-		if (node.kind === 'deck') {
-			for (const child of node.children) {
-				this.selectAll(child);
-			}
+		for (const child of node.children) {
+			this.selectAll(child);
 		}
 	}
 
@@ -81,42 +96,44 @@ export class SyncPanelState {
 		walk(root);
 	}
 
-	private collectCards(deck: DeckNode): CardNode[] {
-		const out: CardNode[] = [];
+	private collectLeaves(
+		deck: DeckNode,
+	): Array<CardNode | DeletedAnkiCardNode> {
+		const out: Array<CardNode | DeletedAnkiCardNode> = [];
 		for (const child of deck.children) {
-			if (child.kind === 'card') {
+			if (child.kind === 'card' || child.kind === 'deleted-anki') {
 				out.push(child);
 			} else {
-				out.push(...this.collectCards(child));
+				out.push(...this.collectLeaves(child));
 			}
 		}
 		return out;
 	}
 
 	/**
-	 * Checkbox visual state. Decks derive from descendant cards so a parent
+	 * Checkbox visual state. Decks derive from descendant leaves so a parent
 	 * is not shown as fully checked when some children are unchecked.
 	 */
-	getCheckState(node: DeckNode | CardNode): SyncCheckState {
-		if (node.kind === 'card') {
+	getCheckState(node: SyncSelectableNode): SyncCheckState {
+		if (node.kind === 'card' || node.kind === 'deleted-anki') {
 			return this.selected.has(node.id) ? 'checked' : 'unchecked';
 		}
 
-		const cards = this.collectCards(node);
-		if (cards.length === 0) {
+		const leaves = this.collectLeaves(node);
+		if (leaves.length === 0) {
 			return this.selected.has(node.id) ? 'checked' : 'unchecked';
 		}
 
 		let selectedCount = 0;
-		for (const card of cards) {
-			if (this.selected.has(card.id)) {
+		for (const leaf of leaves) {
+			if (this.selected.has(leaf.id)) {
 				selectedCount += 1;
 			}
 		}
 		if (selectedCount === 0) {
 			return 'unchecked';
 		}
-		if (selectedCount === cards.length) {
+		if (selectedCount === leaves.length) {
 			return 'checked';
 		}
 		return 'indeterminate';
@@ -150,26 +167,41 @@ export class SyncPanelState {
 		}
 	}
 
-	setSelectedCascade(node: DeckNode | CardNode, selected: boolean): void {
+	setSelectedCascade(node: SyncSelectableNode, selected: boolean): void {
+		if (node.kind === 'card' || node.kind === 'deleted-anki') {
+			if (selected && !this.shouldSelectLeaf(node) && node.kind === 'card') {
+				// Allow explicit user check of title-only / synced via leaf click.
+				this.selected.add(node.id);
+				return;
+			}
+			if (selected) {
+				this.selected.add(node.id);
+			} else {
+				this.selected.delete(node.id);
+			}
+			return;
+		}
+
 		if (selected) {
 			this.selected.add(node.id);
 		} else {
 			this.selected.delete(node.id);
 		}
 
-		if (node.kind === 'deck') {
-			for (const child of node.children) {
-				// Parent check should not force-select empty head titles.
-				if (
-					selected &&
-					child.kind === 'card' &&
-					isHeadTitleOnlyCard(child)
-				) {
-					this.selected.delete(child.id);
-					continue;
-				}
-				this.setSelectedCascade(child, selected);
+		for (const child of node.children) {
+			if (
+				selected &&
+				child.kind === 'card' &&
+				isHeadTitleOnlyCard(child)
+			) {
+				this.selected.delete(child.id);
+				continue;
 			}
+			if (selected && child.kind === 'card' && child.syncStatus === 'synced') {
+				this.selected.delete(child.id);
+				continue;
+			}
+			this.setSelectedCascade(child, selected);
 		}
 	}
 }
