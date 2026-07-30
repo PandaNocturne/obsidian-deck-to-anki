@@ -524,6 +524,7 @@ export class SyncPanelModal extends Modal {
 							window.setTimeout(resolve, 0);
 						});
 					},
+					{ root: this.viewRoot },
 				);
 				this.state.restoreLeafSelection(
 					this.viewRoot,
@@ -606,6 +607,7 @@ export class SyncPanelModal extends Modal {
 						window.setTimeout(resolve, 0);
 					});
 				},
+				{ root: this.viewRoot },
 			);
 
 			if (id !== this.bgCheckId || this.busy) {
@@ -619,8 +621,12 @@ export class SyncPanelModal extends Modal {
 			if (result.warning) {
 				this.statusEl.setText(result.warning);
 			} else {
+				const hint =
+					result.deletedCount > 0
+						? `，仅 Anki ${result.deletedCount} 条`
+						: '';
 				this.statusEl.setText(
-					`后台检测完成（${cards.length} 张）`,
+					`后台检测完成（${cards.length} 张${hint}）`,
 				);
 			}
 		} catch (error) {
@@ -1382,6 +1388,7 @@ export class SyncPanelModal extends Modal {
 						window.setTimeout(resolve, 0);
 					});
 				},
+				{ root: this.viewRoot ?? undefined },
 			);
 			this.ankiStatusChecked = true;
 			this.renderBody();
@@ -1392,7 +1399,11 @@ export class SyncPanelModal extends Modal {
 				return;
 			}
 
-			const summary = `状态检测完成（${cards.length} 张）`;
+			const hint =
+				result.deletedCount > 0
+					? `，仅 Anki ${result.deletedCount} 条`
+					: '';
+			const summary = `状态检测完成（${cards.length} 张${hint}）`;
 			this.statusEl.setText(summary);
 			this.setPanelProgress(1, 1, summary);
 			progress.finish(summary);
