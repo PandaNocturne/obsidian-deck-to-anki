@@ -218,7 +218,9 @@ function renderDeck(
 		type: 'checkbox',
 		cls: 'dta-sync-check',
 	});
-	checkbox.checked = state.isSelected(deck.id);
+	const deckCheck = state.getCheckState(deck);
+	checkbox.checked = deckCheck === 'checked';
+	checkbox.indeterminate = deckCheck === 'indeterminate';
 	checkbox.addEventListener('click', (evt) => {
 		evt.stopPropagation();
 	});

@@ -1,3 +1,4 @@
+import { isHeadTitleOnlyCard } from '../../domain/head/isHeadTitleOnlyCard';
 import type {
 	CardNode,
 	DeckNode,
@@ -6,6 +7,8 @@ import type {
 } from '../../domain/head/types';
 
 export type SyncPanelTab = 'current' | 'all' | 'archived';
+
+export type SyncCheckState = 'checked' | 'unchecked' | 'indeterminate';
 
 export class SyncPanelState {
 	readonly selected = new Set<string>();
@@ -35,14 +38,11 @@ export class SyncPanelState {
 		}
 		this.selected.clear();
 		this.collapsed.clear();
-		this.collapseAllExceptRoot(root);
+		this.collapseAllDecks(root);
 
 		if (options?.selectOnly) {
+			// Keep the tree collapsed; only pre-check the focus subtree.
 			this.selectAll(options.selectOnly);
-			this.expandAncestorsOf(options.selectOnly.id);
-			if (options.selectOnly.kind === 'deck') {
-				this.collapsed.delete(options.selectOnly.id);
-			}
 		} else {
 			this.selectAll(root);
 		}
@@ -57,6 +57,10 @@ export class SyncPanelState {
 	}
 
 	private selectAll(node: DeckNode | CardNode): void {
+		// Head cards with only a title (no body) stay unchecked by default.
+		if (node.kind === 'card' && isHeadTitleOnlyCard(node)) {
+			return;
+		}
 		this.selected.add(node.id);
 		if (node.kind === 'deck') {
 			for (const child of node.children) {
@@ -65,47 +69,57 @@ export class SyncPanelState {
 		}
 	}
 
-	private collapseAllExceptRoot(root: DeckNode): void {
-		const walk = (node: DeckNode, isRoot: boolean) => {
-			if (!isRoot) {
-				this.collapsed.add(node.id);
-			}
+	private collapseAllDecks(root: DeckNode): void {
+		const walk = (node: DeckNode) => {
+			this.collapsed.add(node.id);
 			for (const child of node.children) {
 				if (child.kind === 'deck') {
-					walk(child, false);
+					walk(child);
 				}
 			}
 		};
-		walk(root, true);
+		walk(root);
 	}
 
-	/** Uncollapse every deck on the path from root to targetId. */
-	private expandAncestorsOf(targetId: string): void {
-		if (!this.root) {
-			return;
-		}
-		const path: string[] = [];
-		const walk = (node: DeckNode, trail: string[]): boolean => {
-			const nextTrail = [...trail, node.id];
-			if (node.id === targetId) {
-				path.push(...nextTrail);
-				return true;
+	private collectCards(deck: DeckNode): CardNode[] {
+		const out: CardNode[] = [];
+		for (const child of deck.children) {
+			if (child.kind === 'card') {
+				out.push(child);
+			} else {
+				out.push(...this.collectCards(child));
 			}
-			for (const child of node.children) {
-				if (child.id === targetId) {
-					path.push(...nextTrail);
-					return true;
-				}
-				if (child.kind === 'deck' && walk(child, nextTrail)) {
-					return true;
-				}
-			}
-			return false;
-		};
-		walk(this.root, []);
-		for (const id of path) {
-			this.collapsed.delete(id);
 		}
+		return out;
+	}
+
+	/**
+	 * Checkbox visual state. Decks derive from descendant cards so a parent
+	 * is not shown as fully checked when some children are unchecked.
+	 */
+	getCheckState(node: DeckNode | CardNode): SyncCheckState {
+		if (node.kind === 'card') {
+			return this.selected.has(node.id) ? 'checked' : 'unchecked';
+		}
+
+		const cards = this.collectCards(node);
+		if (cards.length === 0) {
+			return this.selected.has(node.id) ? 'checked' : 'unchecked';
+		}
+
+		let selectedCount = 0;
+		for (const card of cards) {
+			if (this.selected.has(card.id)) {
+				selectedCount += 1;
+			}
+		}
+		if (selectedCount === 0) {
+			return 'unchecked';
+		}
+		if (selectedCount === cards.length) {
+			return 'checked';
+		}
+		return 'indeterminate';
 	}
 
 	expandAll(): void {
@@ -117,7 +131,7 @@ export class SyncPanelState {
 			return;
 		}
 		this.collapsed.clear();
-		this.collapseAllExceptRoot(this.root);
+		this.collapseAllDecks(this.root);
 	}
 
 	isSelected(id: string): boolean {
@@ -145,6 +159,15 @@ export class SyncPanelState {
 
 		if (node.kind === 'deck') {
 			for (const child of node.children) {
+				// Parent check should not force-select empty head titles.
+				if (
+					selected &&
+					child.kind === 'card' &&
+					isHeadTitleOnlyCard(child)
+				) {
+					this.selected.delete(child.id);
+					continue;
+				}
 				this.setSelectedCascade(child, selected);
 			}
 		}
