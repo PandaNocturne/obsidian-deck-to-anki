@@ -32,6 +32,7 @@ import { openCardPreview } from './CardPreviewModal';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
 import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
+import { ProgressNotice } from './progressNotice';
 
 interface SessionDeckSettings {
 	deckType: DeckType;
@@ -123,6 +124,13 @@ export class SyncPanelModal extends Modal {
 	private focusChildLabel: string | null = null;
 	/** True after a successful toolbar 检查; statuses survive reload until closed. */
 	private ankiStatusChecked = false;
+	/** Blocks overlapping check / sync / reload; drives button loading UI. */
+	private busy: null | 'check' | 'sync' | 'reload' = null;
+	private busyNodeId: string | null = null;
+	private checkBtnEl!: HTMLButtonElement;
+	private refreshBtnEl!: HTMLButtonElement;
+	private updateBtnEl!: HTMLButtonElement;
+	private forceBtnEl!: HTMLButtonElement;
 
 	constructor(plugin: DeckToAnkiPlugin) {
 		super(plugin.app);
@@ -153,6 +161,8 @@ export class SyncPanelModal extends Modal {
 		this.forestItems = [];
 		this.focusChildLabel = null;
 		this.ankiStatusChecked = false;
+		this.busy = null;
+		this.busyNodeId = null;
 	}
 
 	private renderChrome(): void {
@@ -192,6 +202,9 @@ export class SyncPanelModal extends Modal {
 		});
 		setIcon(expandBtn, 'chevrons-down');
 		expandBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
 			this.state.expandAll();
 			this.renderBody();
 		});
@@ -202,6 +215,9 @@ export class SyncPanelModal extends Modal {
 		});
 		setIcon(collapseBtn, 'chevrons-up');
 		collapseBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
 			this.state.collapseAll();
 			this.renderBody();
 		});
@@ -210,9 +226,10 @@ export class SyncPanelModal extends Modal {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: { 'aria-label': '刷新', title: '重新解析' },
 		});
+		this.refreshBtnEl = refreshBtn;
 		setIcon(refreshBtn, 'refresh-cw');
 		refreshBtn.addEventListener('click', () => {
-			void this.reload({ preserveTab: true });
+			void this.handleRefresh();
 		});
 
 		const checkBtn = toolbar.createEl('button', {
@@ -222,6 +239,7 @@ export class SyncPanelModal extends Modal {
 				title: '对照 Anki 检测卡片同步状态',
 			},
 		});
+		this.checkBtnEl = checkBtn;
 		setIcon(checkBtn, 'scan-search');
 		checkBtn.addEventListener('click', () => {
 			void this.handleCheckStatus();
@@ -233,6 +251,9 @@ export class SyncPanelModal extends Modal {
 		});
 		setIcon(settingsBtn, 'settings');
 		settingsBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
 			this.close();
 			const setting = (
 				this.app as unknown as {
@@ -252,7 +273,11 @@ export class SyncPanelModal extends Modal {
 			cls: 'dta-sync-footer-btn mod-warning',
 			text: 'Force',
 		});
+		this.forceBtnEl = forceBtn;
 		forceBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
 			new Notice('Force 同步尚未实现');
 		});
 
@@ -261,6 +286,7 @@ export class SyncPanelModal extends Modal {
 			text: 'Update',
 			attr: { title: '将勾选的卡片同步到 Anki' },
 		});
+		this.updateBtnEl = updateBtn;
 		updateBtn.addEventListener('click', () => {
 			void this.handleUpdate();
 		});
@@ -274,7 +300,94 @@ export class SyncPanelModal extends Modal {
 		});
 	}
 
+	private setBusy(
+		kind: 'check' | 'sync' | 'reload',
+		nodeId?: string | null,
+	): boolean {
+		if (this.busy) {
+			return false;
+		}
+		this.busy = kind;
+		this.busyNodeId = nodeId ?? null;
+		this.applyBusyChrome();
+		return true;
+	}
+
+	private clearBusy(): void {
+		this.busy = null;
+		this.busyNodeId = null;
+		this.applyBusyChrome();
+	}
+
+	/** Keep toolbar / footer / row sync buttons disabled + spinning until done. */
+	private applyBusyChrome(): void {
+		const busy = this.busy !== null;
+		const controls: HTMLButtonElement[] = [
+			this.checkBtnEl,
+			this.refreshBtnEl,
+			this.updateBtnEl,
+			this.forceBtnEl,
+			this.currentTabEl,
+			this.allTabEl,
+			this.archivedTabEl,
+		];
+		for (const el of controls) {
+			el.disabled = busy;
+		}
+
+		this.checkBtnEl.toggleClass('is-loading', this.busy === 'check');
+		setIcon(
+			this.checkBtnEl,
+			this.busy === 'check' ? 'loader-circle' : 'scan-search',
+		);
+		this.checkBtnEl.title =
+			this.busy === 'check' ? '检测中…' : '对照 Anki 检测卡片同步状态';
+
+		this.refreshBtnEl.toggleClass('is-loading', this.busy === 'reload');
+		setIcon(
+			this.refreshBtnEl,
+			this.busy === 'reload' ? 'loader-circle' : 'refresh-cw',
+		);
+		this.refreshBtnEl.title =
+			this.busy === 'reload' ? '刷新中…' : '重新解析';
+
+		const updateLoading = this.busy === 'sync' && !this.busyNodeId;
+		this.updateBtnEl.toggleClass('is-loading', updateLoading);
+		this.updateBtnEl.setText(updateLoading ? '同步中…' : 'Update');
+
+		this.treeHostEl
+			?.querySelectorAll<HTMLButtonElement>('[data-dta-sync]')
+			.forEach((btn) => {
+				const id = btn.getAttribute('data-dta-sync');
+				const active = this.busy === 'sync' && id === this.busyNodeId;
+				const idleIcon =
+					(btn.getAttribute('aria-label') ?? '').includes('删除')
+						? 'trash-2'
+						: 'refresh-cw';
+				btn.disabled = busy;
+				btn.toggleClass('is-loading', active);
+				setIcon(btn, active ? 'loader-circle' : idleIcon);
+				btn.title = busy
+					? '进行中…'
+					: (btn.getAttribute('aria-label') ?? '');
+			});
+	}
+
+	private async handleRefresh(): Promise<void> {
+		if (!this.setBusy('reload')) {
+			return;
+		}
+		try {
+			await this.reload({ preserveTab: true });
+		} finally {
+			this.clearBusy();
+		}
+	}
+
 	private async switchTab(tab: SyncPanelTab): Promise<void> {
+		if (this.busy) {
+			return;
+		}
 		if (tab === 'current' && !this.getActiveMarkdownFile()) {
 			new Notice('未打开笔记，已切换到「所有卡片」');
 			this.state.tab = 'all';
@@ -283,7 +396,14 @@ export class SyncPanelModal extends Modal {
 		}
 		// Status check is per view; switching tabs starts without prior colors.
 		this.ankiStatusChecked = false;
-		await this.reload({ preserveTab: true });
+		if (!this.setBusy('reload')) {
+			return;
+		}
+		try {
+			await this.reload({ preserveTab: true });
+		} finally {
+			this.clearBusy();
+		}
 	}
 
 	private async reload(options?: {
@@ -292,6 +412,8 @@ export class SyncPanelModal extends Modal {
 		recheckKeys?: string[];
 		/** Deleted phantoms removed from Anki during this sync. */
 		removedDeletedNoteIds?: number[];
+		/** Sticky notice to update during incremental recheck. */
+		progress?: ProgressNotice;
 	}): Promise<void> {
 		const previousTab = this.state.tab;
 		if (options?.preserveTab) {
@@ -316,7 +438,9 @@ export class SyncPanelModal extends Modal {
 		}
 
 		this.updateChromeState();
-		this.statusEl.setText('解析中…');
+		const parsingMsg = '解析中…';
+		this.statusEl.setText(parsingMsg);
+		options?.progress?.setMessage(parsingMsg);
 
 		if (this.state.tab === 'current') {
 			await this.reloadCurrent(file!, { preserveCollapse });
@@ -334,7 +458,9 @@ export class SyncPanelModal extends Modal {
 
 			const recheckKeys = options?.recheckKeys ?? [];
 			if (recheckKeys.length > 0) {
-				this.statusEl.setText('增量检测同步状态…');
+				const msg = '增量检测同步状态…';
+				this.statusEl.setText(msg);
+				options?.progress?.setMessage(msg);
 				const cards = findCardsByIdentityKeys(
 					this.viewRoot,
 					recheckKeys,
@@ -351,6 +477,7 @@ export class SyncPanelModal extends Modal {
 				this.state.applyStatusToSelection(cards);
 				if (result.warning) {
 					this.statusEl.setText(result.warning);
+					options?.progress?.setMessage(result.warning);
 				}
 			} else {
 				this.state.restoreLeafSelection(
@@ -547,6 +674,8 @@ export class SyncPanelModal extends Modal {
 			showRootMeta: !isForest && this.parsed?.deckType !== 'card',
 			// Forest + standalone card: no synthetic / nested deck chrome.
 			skipRootRow: isForest || this.parsed?.deckType === 'card',
+			busy: this.busy !== null,
+			busyNodeId: this.busyNodeId,
 		};
 
 		if (
@@ -633,59 +762,91 @@ export class SyncPanelModal extends Modal {
 	private async handleSyncNode(
 		node: DeckNode | CardNode | DeletedAnkiCardNode,
 	): Promise<void> {
-		if (node.kind === 'deleted-anki') {
-			const noteId = node.noteId;
-			await this.deleteAnkiNotes([noteId], `已删除「${node.front.slice(0, 24)}」`);
-			await this.reload({
-				preserveTab: true,
-				removedDeletedNoteIds: [noteId],
-			});
+		if (!this.setBusy('sync', node.id)) {
 			return;
 		}
 
-		const label =
-			node.kind === 'deck'
-				? `牌组「${node.name}」`
-				: `卡片「${(node.front || '').slice(0, 32)}」`;
-		this.statusEl.setText(`${label}：同步中…`);
 		try {
-			const cards =
-				node.kind === 'deck' ? collectLocalCards(node) : [node];
-			const result = await syncNodesToAnki(
-				this.app,
-				this.plugin.settings,
-				node,
-				{
-					persistSettings: () => this.plugin.saveSettings(),
-				},
-			);
-			if (result.ok === 0 && result.fail === 0) {
-				new Notice(`${label}：没有可同步的卡片`);
-				this.statusEl.setText('没有可同步的卡片');
+			if (node.kind === 'deleted-anki') {
+				const noteId = node.noteId;
+				const progress = new ProgressNotice(
+					`正在从 Anki 删除「${node.front.slice(0, 24)}」…`,
+				);
+				try {
+					await this.deleteAnkiNotes(
+						[noteId],
+						`已删除「${node.front.slice(0, 24)}」`,
+						{ quiet: true },
+					);
+					await this.reload({
+						preserveTab: true,
+						removedDeletedNoteIds: [noteId],
+						progress,
+					});
+					const done = `已删除「${node.front.slice(0, 24)}」`;
+					this.statusEl.setText(done);
+					progress.finish(done);
+				} catch (error) {
+					const msg =
+						error instanceof Error ? error.message : String(error);
+					progress.finish(`删除失败：${msg}`, 6000);
+				}
 				return;
 			}
-			const cleanupHint =
-				result.emptyDecksDeleted > 0
-					? `，清理空牌组 ${result.emptyDecksDeleted}`
-					: '';
-			const summary = `${label}：成功 ${result.ok}，失败 ${result.fail}${cleanupHint}`;
-			new Notice(summary);
-			this.statusEl.setText(summary);
-			if (result.warnings.length > 0) {
-				console.warn('[Deck To Anki] sync warnings', result.warnings);
+
+			const label =
+				node.kind === 'deck'
+					? `牌组「${node.name}」`
+					: `卡片「${(node.front || '').slice(0, 32)}」`;
+			const progress = new ProgressNotice(`${label}：同步中…`);
+			this.statusEl.setText(`${label}：同步中…`);
+			try {
+				const cards =
+					node.kind === 'deck' ? collectLocalCards(node) : [node];
+				const result = await syncNodesToAnki(
+					this.app,
+					this.plugin.settings,
+					node,
+					{
+						persistSettings: () => this.plugin.saveSettings(),
+					},
+				);
+				if (result.ok === 0 && result.fail === 0) {
+					const empty = `${label}：没有可同步的卡片`;
+					this.statusEl.setText(empty);
+					progress.finish(empty);
+					return;
+				}
+				const cleanupHint =
+					result.emptyDecksDeleted > 0
+						? `，清理空牌组 ${result.emptyDecksDeleted}`
+						: '';
+				const summary = `${label}：成功 ${result.ok}，失败 ${result.fail}${cleanupHint}`;
+				this.statusEl.setText(summary);
+				if (result.warnings.length > 0) {
+					console.warn('[Deck To Anki] sync warnings', result.warnings);
+				}
+				progress.setMessage(`${summary}，刷新中…`);
+				const recheckKeys = cards.flatMap((card) =>
+					cardIdentityKeys(card),
+				);
+				await this.reload({ preserveTab: true, recheckKeys, progress });
+				progress.finish(summary);
+			} catch (error) {
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				this.statusEl.setText(`同步失败：${msg}`);
+				progress.finish(`同步失败：${msg}`, 6000);
 			}
-			const recheckKeys = cards.flatMap((card) => cardIdentityKeys(card));
-			await this.reload({ preserveTab: true, recheckKeys });
-		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			new Notice(`同步失败：${msg}`);
-			this.statusEl.setText(`同步失败：${msg}`);
+		} finally {
+			this.clearBusy();
 		}
 	}
 
 	private async deleteAnkiNotes(
 		noteIds: number[],
 		label: string,
+		options?: { quiet?: boolean },
 	): Promise<void> {
 		if (noteIds.length === 0) {
 			return;
@@ -698,14 +859,17 @@ export class SyncPanelModal extends Modal {
 		try {
 			await client.ping();
 			await client.deleteNotes(noteIds);
-			new Notice(`${label}：已从 Anki 删除 ${noteIds.length} 条`);
-			this.statusEl.setText(
-				`${label}：已从 Anki 删除 ${noteIds.length} 条`,
-			);
+			const done = `${label}：已从 Anki 删除 ${noteIds.length} 条`;
+			this.statusEl.setText(done);
+			if (!options?.quiet) {
+				new Notice(done);
+			}
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
-			new Notice(`删除 Anki 笔记失败：${msg}`);
 			this.statusEl.setText(`删除失败：${msg}`);
+			if (!options?.quiet) {
+				new Notice(`删除 Anki 笔记失败：${msg}`);
+			}
 			throw error;
 		}
 	}
@@ -976,7 +1140,11 @@ export class SyncPanelModal extends Modal {
 			new Notice('没有可检查的牌组');
 			return;
 		}
+		if (!this.setBusy('check')) {
+			return;
+		}
 
+		const progress = new ProgressNotice('正在对照 Anki 检测同步状态…');
 		this.statusEl.setText('正在对照 Anki 检测同步状态…');
 		try {
 			const result = await prefetchSyncStatus(
@@ -989,8 +1157,8 @@ export class SyncPanelModal extends Modal {
 			this.renderBody();
 
 			if (result.warning) {
-				new Notice(result.warning);
 				this.statusEl.setText(result.warning);
+				progress.finish(result.warning, 6000);
 				return;
 			}
 
@@ -999,12 +1167,14 @@ export class SyncPanelModal extends Modal {
 					? `，发现仅 Anki 存在 ${result.deletedCount} 条`
 					: '';
 			const summary = `状态检测完成${hint}`;
-			new Notice(summary);
 			this.statusEl.setText(summary);
+			progress.finish(summary);
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
-			new Notice(`状态检测失败：${msg}`);
 			this.statusEl.setText(`状态检测失败：${msg}`);
+			progress.finish(`状态检测失败：${msg}`, 6000);
+		} finally {
+			this.clearBusy();
 		}
 	}
 
@@ -1064,58 +1234,75 @@ export class SyncPanelModal extends Modal {
 			this.statusEl.setText('未勾选卡片');
 			return;
 		}
+		if (!this.setBusy('sync')) {
+			return;
+		}
 
-		this.statusEl.setText(
-			`正在同步 ${cards.length} 张、删除 ${deleted.length} 条…`,
-		);
+		const startMsg = `正在同步 ${cards.length} 张、删除 ${deleted.length} 条…`;
+		const progress = new ProgressNotice(startMsg);
+		this.statusEl.setText(startMsg);
 
 		let ok = 0;
 		let fail = 0;
 		let emptyDecksDeleted = 0;
 		const warnings: string[] = [];
 
-		if (cards.length > 0) {
-			const result = await syncCardListToAnki(
-				this.app,
-				this.plugin.settings,
-				cards,
-				{
-					persistSettings: () => this.plugin.saveSettings(),
-				},
-			);
-			ok += result.ok;
-			fail += result.fail;
-			emptyDecksDeleted += result.emptyDecksDeleted;
-			warnings.push(...result.warnings);
-		}
-
-		if (deleted.length > 0) {
-			try {
-				await this.deleteAnkiNotes(
-					deleted.map((d) => d.noteId),
-					'已删除条目',
+		try {
+			if (cards.length > 0) {
+				const result = await syncCardListToAnki(
+					this.app,
+					this.plugin.settings,
+					cards,
+					{
+						persistSettings: () => this.plugin.saveSettings(),
+					},
 				);
-				ok += deleted.length;
-			} catch {
-				fail += deleted.length;
+				ok += result.ok;
+				fail += result.fail;
+				emptyDecksDeleted += result.emptyDecksDeleted;
+				warnings.push(...result.warnings);
 			}
-		}
 
-		const cleanupHint =
-			emptyDecksDeleted > 0
-				? `，清理空牌组 ${emptyDecksDeleted}`
-				: '';
-		const summary = `Anki 同步：成功 ${ok}，失败 ${fail}${cleanupHint}`;
-		new Notice(summary);
-		this.statusEl.setText(summary);
-		if (warnings.length > 0) {
-			console.warn('[Deck To Anki] Update sync warnings', warnings);
+			if (deleted.length > 0) {
+				progress.setMessage(
+					`正在从 Anki 删除 ${deleted.length} 条…`,
+				);
+				try {
+					await this.deleteAnkiNotes(
+						deleted.map((d) => d.noteId),
+						'已删除条目',
+						{ quiet: true },
+					);
+					ok += deleted.length;
+				} catch {
+					fail += deleted.length;
+				}
+			}
+
+			const cleanupHint =
+				emptyDecksDeleted > 0
+					? `，清理空牌组 ${emptyDecksDeleted}`
+					: '';
+			const summary = `Anki 同步：成功 ${ok}，失败 ${fail}${cleanupHint}`;
+			this.statusEl.setText(summary);
+			if (warnings.length > 0) {
+				console.warn('[Deck To Anki] Update sync warnings', warnings);
+			}
+			progress.setMessage(`${summary}，刷新中…`);
+			await this.reload({
+				preserveTab: true,
+				recheckKeys: cards.flatMap((card) => cardIdentityKeys(card)),
+				removedDeletedNoteIds: deleted.map((d) => d.noteId),
+				progress,
+			});
+			progress.finish(summary);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			this.statusEl.setText(`同步失败：${msg}`);
+			progress.finish(`同步失败：${msg}`, 6000);
+		} finally {
+			this.clearBusy();
 		}
-		await this.reload({
-			preserveTab: true,
-			recheckKeys: cards.flatMap((card) => cardIdentityKeys(card)),
-			removedDeletedNoteIds: deleted.map((d) => d.noteId),
-		});
 	}
 
 	private updateChromeState(): void {

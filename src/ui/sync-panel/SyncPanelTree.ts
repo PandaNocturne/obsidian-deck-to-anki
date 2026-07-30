@@ -40,6 +40,39 @@ export interface SyncPanelTreeOptions {
 	 * Used by forest views and standalone card-mode notes (card is a leaf, no deck row).
 	 */
 	skipRootRow?: boolean;
+	/** Disable sync actions while check/sync/reload is running. */
+	busy?: boolean;
+	/** Node id whose sync button should show a spinner. */
+	busyNodeId?: string | null;
+}
+
+function bindSyncActionButton(
+	row: HTMLElement,
+	nodeId: string,
+	label: string,
+	options: SyncPanelTreeOptions,
+	onSync: () => void,
+	idleIcon = 'refresh-cw',
+): void {
+	const busy = options.busy === true;
+	const active = busy && options.busyNodeId === nodeId;
+	const syncBtn = row.createEl('button', {
+		cls: `dta-sync-action clickable-icon${active ? ' is-loading' : ''}`,
+		attr: {
+			'aria-label': label,
+			title: busy ? '进行中…' : label,
+			'data-dta-sync': nodeId,
+		},
+	});
+	syncBtn.disabled = busy;
+	setIcon(syncBtn, active ? 'loader-circle' : idleIcon);
+	syncBtn.addEventListener('click', (evt) => {
+		evt.stopPropagation();
+		if (busy) {
+			return;
+		}
+		onSync();
+	});
 }
 
 export function renderSyncPanelTree(
@@ -59,7 +92,7 @@ export function renderSyncPanelTree(
 				renderDeck(list, child, state, handlers, options, 0, null);
 			} else {
 				cardSibling += 1;
-				renderLeaf(list, child, state, handlers, cardSibling);
+				renderLeaf(list, child, state, handlers, options, cardSibling);
 			}
 		}
 		return;
@@ -258,13 +291,7 @@ function renderDeck(
 		});
 	}
 
-	const syncBtn = row.createEl('button', {
-		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '同步牌组', title: '同步到 Anki' },
-	});
-	setIcon(syncBtn, 'refresh-cw');
-	syncBtn.addEventListener('click', (evt) => {
-		evt.stopPropagation();
+	bindSyncActionButton(row, deck.id, '同步牌组', options, () => {
 		handlers.onSyncStub(deck);
 	});
 
@@ -303,7 +330,7 @@ function renderDeck(
 			);
 		} else {
 			cardSibling += 1;
-			renderLeaf(childrenEl, child, state, handlers, cardSibling);
+			renderLeaf(childrenEl, child, state, handlers, options, cardSibling);
 		}
 	}
 }
@@ -313,13 +340,14 @@ function renderLeaf(
 	leaf: CardNode | DeletedAnkiCardNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	options: SyncPanelTreeOptions,
 	siblingIndex: number,
 ): void {
 	if (leaf.kind === 'deleted-anki') {
-		renderDeletedCard(parent, leaf, state, handlers, siblingIndex);
+		renderDeletedCard(parent, leaf, state, handlers, options, siblingIndex);
 		return;
 	}
-	renderCard(parent, leaf, state, handlers, siblingIndex);
+	renderCard(parent, leaf, state, handlers, options, siblingIndex);
 }
 
 function renderDeletedCard(
@@ -327,6 +355,7 @@ function renderDeletedCard(
 	card: DeletedAnkiCardNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	options: SyncPanelTreeOptions,
 	siblingIndex: number,
 ): void {
 	const row = parent.createDiv({
@@ -366,15 +395,16 @@ function renderDeletedCard(
 		});
 	}
 
-	const syncBtn = row.createEl('button', {
-		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '从 Anki 删除', title: '从 Anki 删除' },
-	});
-	setIcon(syncBtn, 'trash-2');
-	syncBtn.addEventListener('click', (evt) => {
-		evt.stopPropagation();
-		handlers.onSyncStub(card);
-	});
+	bindSyncActionButton(
+		row,
+		card.id,
+		'从 Anki 删除',
+		options,
+		() => {
+			handlers.onSyncStub(card);
+		},
+		'trash-2',
+	);
 
 	const checkbox = row.createEl('input', {
 		type: 'checkbox',
@@ -394,6 +424,7 @@ function renderCard(
 	card: CardNode,
 	state: SyncPanelState,
 	handlers: SyncPanelTreeHandlers,
+	options: SyncPanelTreeOptions,
 	siblingIndex: number,
 ): void {
 	const isListCard = card.deckClass === 'list';
@@ -510,13 +541,7 @@ function renderCard(
 		});
 	}
 
-	const syncBtn = row.createEl('button', {
-		cls: 'dta-sync-action clickable-icon',
-		attr: { 'aria-label': '同步卡片', title: '同步到 Anki' },
-	});
-	setIcon(syncBtn, 'refresh-cw');
-	syncBtn.addEventListener('click', (evt) => {
-		evt.stopPropagation();
+	bindSyncActionButton(row, card.id, '同步卡片', options, () => {
 		handlers.onSyncStub(card);
 	});
 

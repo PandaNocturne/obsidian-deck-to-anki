@@ -101,6 +101,10 @@ if you want to view the source, please visit the github repository of this plugi
   color: var(--text-normal);
   background: var(--background-modifier-hover);
 }
+.dta-sync-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 .dta-sync-meta {
   display: flex;
   align-items: center;
@@ -141,9 +145,21 @@ if you want to view the source, please visit the github repository of this plugi
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
 }
-.dta-sync-toolbar-btn:hover {
+.dta-sync-toolbar-btn:hover:not(:disabled) {
   color: var(--text-normal);
   background: var(--background-modifier-hover);
+}
+.dta-sync-toolbar-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dta-sync-toolbar-btn.is-loading {
+  opacity: 1;
+  color: var(--interactive-accent);
+  cursor: progress;
+}
+.dta-sync-toolbar-btn.is-loading svg {
+  animation: dta-sync-spin 0.8s linear infinite;
 }
 .dta-sync-body {
   flex: 1;
@@ -436,6 +452,18 @@ if you want to view the source, please visit the github repository of this plugi
   color: var(--interactive-accent);
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 }
+.dta-sync-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dta-sync-action.is-loading {
+  opacity: 1;
+  color: var(--interactive-accent);
+  cursor: progress;
+}
+.dta-sync-action.is-loading svg {
+  animation: dta-sync-spin 0.8s linear infinite;
+}
 .dta-sync-check {
   flex-shrink: 0;
   margin: 0;
@@ -460,11 +488,19 @@ if you want to view the source, please visit the github repository of this plugi
   letter-spacing: 0.01em;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
 }
-.dta-sync-footer-btn:hover {
+.dta-sync-footer-btn:hover:not(:disabled) {
   background: var(--background-modifier-hover);
 }
-.dta-sync-footer-btn:active {
+.dta-sync-footer-btn:active:not(:disabled) {
   transform: translateY(1px);
+}
+.dta-sync-footer-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.dta-sync-footer-btn.is-loading {
+  opacity: 1;
+  cursor: progress;
 }
 .dta-sync-footer-btn.mod-cta {
   background: var(--interactive-accent);
@@ -649,4 +685,12 @@ if you want to view the source, please visit the github repository of this plugi
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+@keyframes dta-sync-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

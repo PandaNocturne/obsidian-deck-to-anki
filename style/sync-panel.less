@@ -68,6 +68,11 @@
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
 	}
+
+	&:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
 }
 
 .dta-sync-meta {
@@ -115,9 +120,24 @@
 		background 0.12s ease,
 		color 0.12s ease;
 
-	&:hover {
+	&:hover:not(:disabled) {
 		color: var(--text-normal);
 		background: var(--background-modifier-hover);
+	}
+
+	&:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	&.is-loading {
+		opacity: 1;
+		color: var(--interactive-accent);
+		cursor: progress;
+
+		svg {
+			animation: dta-sync-spin 0.8s linear infinite;
+		}
 	}
 }
 
@@ -464,6 +484,21 @@
 		color: var(--interactive-accent);
 		background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
 	}
+
+	&:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	&.is-loading {
+		opacity: 1;
+		color: var(--interactive-accent);
+		cursor: progress;
+
+		svg {
+			animation: dta-sync-spin 0.8s linear infinite;
+		}
+	}
 }
 
 .dta-sync-check {
@@ -495,12 +530,22 @@
 		border-color 0.12s ease,
 		transform 0.08s ease;
 
-	&:hover {
+	&:hover:not(:disabled) {
 		background: var(--background-modifier-hover);
 	}
 
-	&:active {
+	&:active:not(:disabled) {
 		transform: translateY(1px);
+	}
+
+	&:disabled {
+		opacity: 0.55;
+		cursor: not-allowed;
+	}
+
+	&.is-loading {
+		opacity: 1;
+		cursor: progress;
 	}
 
 	&.mod-cta {
@@ -719,5 +764,14 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.35rem;
+	}
+}
+
+@keyframes dta-sync-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
 	}
 }
