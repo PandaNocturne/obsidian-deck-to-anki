@@ -264,6 +264,280 @@ function recountLocalCards(node: DeckNode): number {
 	return count;
 }
 
+function cardTitleHint(card: CardNode): string {
+	const nav = (card.navTitle ?? '').trim();
+	if (nav) {
+		return nav;
+	}
+	const first = (card.front ?? '').split(/\r?\n/)[0] ?? '';
+	return first.replace(/^#+\s*/, '').trim().slice(0, 80);
+}
+
+/** Stable keys for matching a card across re-parse / ID-marker writes. */
+export function cardIdentityKeys(card: CardNode): string[] {
+	const keys: string[] = [];
+	if (card.noteId !== undefined) {
+		keys.push(`nid:${card.noteId}`);
+	}
+	const path = card.sourceFilePath ?? '';
+	const title = cardTitleHint(card);
+	if (path && title) {
+		keys.push(`title:${path}::${title}`);
+	}
+	if (path) {
+		keys.push(`line:${path}::${card.lineStart}`);
+	}
+	keys.push(`id:${card.id}`);
+	return keys;
+}
+
+export function deletedIdentityKey(node: DeletedAnkiCardNode): string {
+	return `nid:${node.noteId}`;
+}
+
+export interface SyncStatusTreeSnapshot {
+	/** Each local card: identity keys → last known status. */
+	cards: Array<{ keys: string[]; status: SyncCardStatus }>;
+	deleted: DeletedAnkiCardNode[];
+	/** Identity keys of selected leaves (cards + deleted phantoms). */
+	selectedKeys: string[];
+}
+
+function collectDeletedPhantoms(root: DeckNode): DeletedAnkiCardNode[] {
+	const out: DeletedAnkiCardNode[] = [];
+	const walk = (node: DeckNode) => {
+		for (const child of node.children) {
+			if (child.kind === 'deleted-anki') {
+				out.push({ ...child });
+			} else if (child.kind === 'deck') {
+				walk(child);
+			}
+		}
+	};
+	walk(root);
+	return out;
+}
+
+/** Capture status colors / deleted rows / selection before tree reload. */
+export function snapshotSyncStatusTree(
+	root: DeckNode,
+	isSelected: (id: string) => boolean,
+): SyncStatusTreeSnapshot {
+	const cards: SyncStatusTreeSnapshot['cards'] = [];
+	const selectedKeys: string[] = [];
+
+	for (const card of collectLocalCards(root)) {
+		if (card.syncStatus) {
+			cards.push({
+				keys: cardIdentityKeys(card),
+				status: card.syncStatus,
+			});
+		}
+		if (isSelected(card.id)) {
+			selectedKeys.push(...cardIdentityKeys(card));
+		}
+	}
+
+	const deleted = collectDeletedPhantoms(root);
+	for (const phantom of deleted) {
+		if (isSelected(phantom.id)) {
+			selectedKeys.push(deletedIdentityKey(phantom));
+		}
+	}
+
+	return { cards, deleted, selectedKeys };
+}
+
+function lookupStatus(
+	keys: string[],
+	byKey: Map<string, SyncCardStatus>,
+): SyncCardStatus | undefined {
+	for (const key of keys) {
+		const hit = byKey.get(key);
+		if (hit) {
+			return hit;
+		}
+	}
+	return undefined;
+}
+
+/** Re-apply prior check results onto a freshly parsed tree. */
+export function restoreSyncStatusTree(
+	root: DeckNode,
+	snapshot: SyncStatusTreeSnapshot,
+	options?: { removedDeletedNoteIds?: number[] },
+): void {
+	clearDeletedChildren(root);
+
+	const byKey = new Map<string, SyncCardStatus>();
+	for (const entry of snapshot.cards) {
+		for (const key of entry.keys) {
+			byKey.set(key, entry.status);
+		}
+	}
+
+	for (const card of collectLocalCards(root)) {
+		const status = lookupStatus(cardIdentityKeys(card), byKey);
+		if (status && status !== 'deleted') {
+			card.syncStatus = status;
+		}
+	}
+
+	const removed = new Set(options?.removedDeletedNoteIds ?? []);
+	const localIds = new Set<number>();
+	for (const card of collectLocalCards(root)) {
+		if (card.noteId !== undefined) {
+			localIds.add(card.noteId);
+		}
+	}
+
+	for (const phantom of snapshot.deleted) {
+		if (removed.has(phantom.noteId) || localIds.has(phantom.noteId)) {
+			continue;
+		}
+		const parent = findClosestDeck(root, phantom.deckPath);
+		parent.children.push({
+			...phantom,
+			id: `deleted:${phantom.noteId}`,
+			syncStatus: 'deleted',
+		});
+	}
+
+	recountLocalCards(root);
+}
+
+export function findCardsByIdentityKeys(
+	root: DeckNode,
+	keys: Iterable<string>,
+): CardNode[] {
+	const want = new Set(keys);
+	if (want.size === 0) {
+		return [];
+	}
+	const out: CardNode[] = [];
+	const seen = new Set<string>();
+	for (const card of collectLocalCards(root)) {
+		if (seen.has(card.id)) {
+			continue;
+		}
+		if (cardIdentityKeys(card).some((k) => want.has(k))) {
+			out.push(card);
+			seen.add(card.id);
+		}
+	}
+	return out;
+}
+
+type AnkiNoteCache = Map<
+	number,
+	{
+		fields: Record<string, string>;
+		tags: string[];
+		modelName: string;
+	}
+>;
+
+async function stampCardStatuses(
+	app: App,
+	settings: DeckToAnkiSettings,
+	client: AnkiConnectClient,
+	cards: CardNode[],
+	ankiById: AnkiNoteCache,
+): Promise<void> {
+	for (const card of cards) {
+		if (card.noteId === undefined) {
+			card.syncStatus = 'unsynced';
+			continue;
+		}
+		const remote = ankiById.get(card.noteId);
+		if (!remote) {
+			card.syncStatus = 'unsynced';
+			continue;
+		}
+
+		try {
+			const local = await buildComparablePayload(app, settings, card);
+			const inExpectedDeck =
+				(
+					await client.findNotes(
+						`nid:${card.noteId} deck:"${escapeAnkiQueryValue(local.deckName)}"`,
+					)
+				).length > 0;
+			card.syncStatus = payloadsMatch(local, {
+				...remote,
+				inExpectedDeck,
+			})
+				? 'synced'
+				: 'modified';
+		} catch {
+			card.syncStatus = 'modified';
+		}
+	}
+}
+
+async function loadAnkiNotesById(
+	client: AnkiConnectClient,
+	noteIds: number[],
+): Promise<AnkiNoteCache> {
+	const ankiById: AnkiNoteCache = new Map();
+	const CHUNK = 50;
+	for (let i = 0; i < noteIds.length; i += CHUNK) {
+		const chunk = noteIds.slice(i, i + CHUNK);
+		const infos = await client.notesInfo(chunk);
+		for (const info of infos) {
+			ankiById.set(info.noteId, {
+				fields: info.fields,
+				tags: info.tags,
+				modelName: info.modelName,
+			});
+		}
+	}
+	return ankiById;
+}
+
+/**
+ * Re-check only the given cards against Anki (no orphan scan).
+ * Used after sync so the rest of a prior full check stays intact.
+ */
+export async function prefetchSyncStatusForCards(
+	app: App,
+	settings: DeckToAnkiSettings,
+	cards: CardNode[],
+): Promise<SyncStatusPrefetchResult> {
+	if (cards.length === 0) {
+		return { ankiOnline: true, deletedCount: 0 };
+	}
+
+	const client = new AnkiConnectClient(
+		() => settings.ankiConnectUrl || 'http://127.0.0.1:8765',
+	);
+
+	try {
+		await client.ping();
+	} catch (error) {
+		for (const card of cards) {
+			card.syncStatus = 'unsynced';
+		}
+		const msg = error instanceof Error ? error.message : String(error);
+		return {
+			ankiOnline: false,
+			warning: `Anki 未连接，增量状态未更新：${msg}`,
+			deletedCount: 0,
+		};
+	}
+
+	const noteIds = [
+		...new Set(
+			cards
+				.map((c) => c.noteId)
+				.filter((id): id is number => id !== undefined),
+		),
+	];
+	const ankiById = await loadAnkiNotesById(client, noteIds);
+	await stampCardStatuses(app, settings, client, cards, ankiById);
+	return { ankiOnline: true, deletedCount: 0 };
+}
+
 /**
  * Prefetch Anki note state, stamp `syncStatus` on local cards, and attach
  * deleted-only phantom rows under matching decks.
@@ -302,28 +576,7 @@ export async function prefetchSyncStatus(
 		}
 	}
 
-	const noteIds = [...localIds];
-	const ankiById = new Map<
-		number,
-		{
-			fields: Record<string, string>;
-			tags: string[];
-			modelName: string;
-		}
-	>();
-
-	const CHUNK = 50;
-	for (let i = 0; i < noteIds.length; i += CHUNK) {
-		const chunk = noteIds.slice(i, i + CHUNK);
-		const infos = await client.notesInfo(chunk);
-		for (const info of infos) {
-			ankiById.set(info.noteId, {
-				fields: info.fields,
-				tags: info.tags,
-				modelName: info.modelName,
-			});
-		}
-	}
+	const ankiById = await loadAnkiNotesById(client, [...localIds]);
 
 	const deckPaths = new Set<string>();
 	collectDeckPaths(root, deckPaths);
@@ -348,38 +601,11 @@ export async function prefetchSyncStatus(
 		}
 	}
 
-	for (const card of localCards) {
-		if (card.noteId === undefined) {
-			card.syncStatus = 'unsynced';
-			continue;
-		}
-		const remote = ankiById.get(card.noteId);
-		if (!remote) {
-			card.syncStatus = 'unsynced';
-			continue;
-		}
-
-		try {
-			const local = await buildComparablePayload(app, settings, card);
-			const inExpectedDeck =
-				(
-					await client.findNotes(
-						`nid:${card.noteId} deck:"${escapeAnkiQueryValue(local.deckName)}"`,
-					)
-				).length > 0;
-			card.syncStatus = payloadsMatch(local, {
-				...remote,
-				inExpectedDeck,
-			})
-				? 'synced'
-				: 'modified';
-		} catch {
-			card.syncStatus = 'modified';
-		}
-	}
+	await stampCardStatuses(app, settings, client, localCards, ankiById);
 
 	const orphanIds = [...ankiIdsInView].filter((id) => !localIds.has(id));
 	let deletedCount = 0;
+	const CHUNK = 50;
 
 	if (orphanIds.length > 0) {
 		const orphanInfos: Array<{

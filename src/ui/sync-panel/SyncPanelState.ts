@@ -5,9 +5,12 @@ import type {
 	DeckNode,
 	DeckType,
 	ParsedHeadFile,
-	SyncTreeChild,
 } from '../../domain/head/types';
-import { shouldSelectByStatus } from '../../anki/syncStatus';
+import {
+	cardIdentityKeys,
+	deletedIdentityKey,
+	shouldSelectByStatus,
+} from '../../anki/syncStatus';
 
 export type SyncPanelTab = 'current' | 'all' | 'archived';
 
@@ -242,5 +245,43 @@ export class SyncPanelState {
 		this.root = root;
 		this.selected.clear();
 		this.selectAll(root);
+	}
+
+	/**
+	 * Restore leaf checkboxes by identity keys (survives re-parse).
+	 * Deck rows derive checked/indeterminate from leaves.
+	 */
+	restoreLeafSelection(root: DeckNode, selectedKeys: Iterable<string>): void {
+		this.root = root;
+		const want = new Set(selectedKeys);
+		this.selected.clear();
+
+		const walk = (node: DeckNode) => {
+			for (const child of node.children) {
+				if (child.kind === 'card') {
+					if (cardIdentityKeys(child).some((k) => want.has(k))) {
+						this.selected.add(child.id);
+					}
+				} else if (child.kind === 'deleted-anki') {
+					if (want.has(deletedIdentityKey(child))) {
+						this.selected.add(child.id);
+					}
+				} else {
+					walk(child);
+				}
+			}
+		};
+		walk(root);
+	}
+
+	/** After incremental recheck: synced → unchecked; others keep or follow status. */
+	applyStatusToSelection(cards: CardNode[]): void {
+		for (const card of cards) {
+			if (shouldSelectByStatus(card.syncStatus)) {
+				this.selected.add(card.id);
+			} else {
+				this.selected.delete(card.id);
+			}
+		}
 	}
 }

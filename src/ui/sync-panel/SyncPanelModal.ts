@@ -16,7 +16,16 @@ import {
 	type DeckTemplateId,
 } from '../../anki/templates';
 import { syncCardListToAnki, syncNodesToAnki } from '../../anki/syncCard';
-import { prefetchSyncStatus } from '../../anki/syncStatus';
+import {
+	cardIdentityKeys,
+	collectLocalCards,
+	findCardsByIdentityKeys,
+	prefetchSyncStatus,
+	prefetchSyncStatusForCards,
+	restoreSyncStatusTree,
+	snapshotSyncStatusTree,
+	type SyncStatusTreeSnapshot,
+} from '../../anki/syncStatus';
 import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
@@ -112,6 +121,8 @@ export class SyncPanelModal extends Modal {
 	private readonly childOverrides = new Map<string, SessionDeckSettings>();
 	/** When opened from a child via deckFile, the focused child deck name. */
 	private focusChildLabel: string | null = null;
+	/** True after a successful toolbar 检查; statuses survive reload until closed. */
+	private ankiStatusChecked = false;
 
 	constructor(plugin: DeckToAnkiPlugin) {
 		super(plugin.app);
@@ -141,6 +152,7 @@ export class SyncPanelModal extends Modal {
 		this.viewRoot = null;
 		this.forestItems = [];
 		this.focusChildLabel = null;
+		this.ankiStatusChecked = false;
 	}
 
 	private renderChrome(): void {
@@ -269,15 +281,34 @@ export class SyncPanelModal extends Modal {
 		} else {
 			this.state.tab = tab;
 		}
+		// Status check is per view; switching tabs starts without prior colors.
+		this.ankiStatusChecked = false;
 		await this.reload({ preserveTab: true });
 	}
 
-	private async reload(options?: { preserveTab?: boolean }): Promise<void> {
+	private async reload(options?: {
+		preserveTab?: boolean;
+		/** Identity keys of cards to re-check against Anki after restore. */
+		recheckKeys?: string[];
+		/** Deleted phantoms removed from Anki during this sync. */
+		removedDeletedNoteIds?: number[];
+	}): Promise<void> {
 		const previousTab = this.state.tab;
 		if (options?.preserveTab) {
 			this.state.tab = previousTab;
 		}
 		const preserveCollapse = options?.preserveTab === true;
+
+		let statusSnapshot: SyncStatusTreeSnapshot | null = null;
+		if (
+			preserveCollapse &&
+			this.ankiStatusChecked &&
+			this.viewRoot
+		) {
+			statusSnapshot = snapshotSyncStatusTree(this.viewRoot, (id) =>
+				this.state.isSelected(id),
+			);
+		}
 
 		const file = this.getActiveMarkdownFile();
 		if (this.state.tab === 'current' && !file) {
@@ -294,6 +325,39 @@ export class SyncPanelModal extends Modal {
 				this.state.tab === 'archived' ? 'archived' : 'active',
 				{ preserveCollapse },
 			);
+		}
+
+		if (statusSnapshot && this.viewRoot) {
+			restoreSyncStatusTree(this.viewRoot, statusSnapshot, {
+				removedDeletedNoteIds: options?.removedDeletedNoteIds,
+			});
+
+			const recheckKeys = options?.recheckKeys ?? [];
+			if (recheckKeys.length > 0) {
+				this.statusEl.setText('增量检测同步状态…');
+				const cards = findCardsByIdentityKeys(
+					this.viewRoot,
+					recheckKeys,
+				);
+				const result = await prefetchSyncStatusForCards(
+					this.app,
+					this.plugin.settings,
+					cards,
+				);
+				this.state.restoreLeafSelection(
+					this.viewRoot,
+					statusSnapshot.selectedKeys,
+				);
+				this.state.applyStatusToSelection(cards);
+				if (result.warning) {
+					this.statusEl.setText(result.warning);
+				}
+			} else {
+				this.state.restoreLeafSelection(
+					this.viewRoot,
+					statusSnapshot.selectedKeys,
+				);
+			}
 		}
 
 		this.renderBody();
@@ -570,8 +634,12 @@ export class SyncPanelModal extends Modal {
 		node: DeckNode | CardNode | DeletedAnkiCardNode,
 	): Promise<void> {
 		if (node.kind === 'deleted-anki') {
-			await this.deleteAnkiNotes([node.noteId], `已删除「${node.front.slice(0, 24)}」`);
-			await this.reload({ preserveTab: true });
+			const noteId = node.noteId;
+			await this.deleteAnkiNotes([noteId], `已删除「${node.front.slice(0, 24)}」`);
+			await this.reload({
+				preserveTab: true,
+				removedDeletedNoteIds: [noteId],
+			});
 			return;
 		}
 
@@ -581,6 +649,8 @@ export class SyncPanelModal extends Modal {
 				: `卡片「${(node.front || '').slice(0, 32)}」`;
 		this.statusEl.setText(`${label}：同步中…`);
 		try {
+			const cards =
+				node.kind === 'deck' ? collectLocalCards(node) : [node];
 			const result = await syncNodesToAnki(
 				this.app,
 				this.plugin.settings,
@@ -604,7 +674,8 @@ export class SyncPanelModal extends Modal {
 			if (result.warnings.length > 0) {
 				console.warn('[Deck To Anki] sync warnings', result.warnings);
 			}
-			await this.reload({ preserveTab: true });
+			const recheckKeys = cards.flatMap((card) => cardIdentityKeys(card));
+			await this.reload({ preserveTab: true, recheckKeys });
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);
 			new Notice(`同步失败：${msg}`);
@@ -913,6 +984,7 @@ export class SyncPanelModal extends Modal {
 				this.plugin.settings,
 				this.viewRoot,
 			);
+			this.ankiStatusChecked = true;
 			this.state.reselectByStatus(this.viewRoot);
 			this.renderBody();
 
@@ -1039,7 +1111,11 @@ export class SyncPanelModal extends Modal {
 		if (warnings.length > 0) {
 			console.warn('[Deck To Anki] Update sync warnings', warnings);
 		}
-		await this.reload({ preserveTab: true });
+		await this.reload({
+			preserveTab: true,
+			recheckKeys: cards.flatMap((card) => cardIdentityKeys(card)),
+			removedDeletedNoteIds: deleted.map((d) => d.noteId),
+		});
 	}
 
 	private updateChromeState(): void {
