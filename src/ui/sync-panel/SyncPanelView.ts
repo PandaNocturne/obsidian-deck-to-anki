@@ -35,6 +35,7 @@ export class SyncPanelView extends ItemView {
 		root.empty();
 		root.addClass('dta-sync-view');
 		this.ui = new SyncPanelUI(this.plugin, {
+			tabsMode: 'forest',
 			showCancel: false,
 			closeOnOpenSettings: false,
 		});

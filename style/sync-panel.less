@@ -47,6 +47,10 @@
 	border: 1px solid var(--background-modifier-border);
 }
 
+.dta-sync-tabs--two {
+	grid-template-columns: 1fr 1fr;
+}
+
 .dta-sync-type-tabs {
 	grid-template-columns: 1fr 1fr 1fr;
 }
@@ -548,6 +552,10 @@
 	grid-template-columns: 1fr 1.2fr 1fr;
 	gap: 0.45rem;
 	padding-top: 0.1rem;
+
+	&.dta-sync-footer--two {
+		grid-template-columns: 1fr 1fr;
+	}
 }
 
 .dta-sync-progress {
@@ -555,10 +563,7 @@
 	flex-direction: column;
 	gap: 0.35rem;
 	padding: 0.15rem 0.05rem 0.05rem;
-
-	&.is-hidden {
-		display: none;
-	}
+	flex-shrink: 0;
 }
 
 .dta-sync-progress-label {
@@ -568,6 +573,7 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	min-height: 1.3em;
 }
 
 .dta-sync-progress-track {

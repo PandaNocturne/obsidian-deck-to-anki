@@ -37,6 +37,11 @@ import { renderSyncPanelTree } from './SyncPanelTree';
 import { ProgressNotice } from './progressNotice';
 
 export interface SyncPanelUIOptions {
+	/**
+	 * Tab set: `full` = 当前/所有/归档；`forest` = 仅所有/归档（侧边栏）。
+	 * Default `full`.
+	 */
+	tabsMode?: 'full' | 'forest';
 	/** Show Cancel in the footer (modal). Default false. */
 	showCancel?: boolean;
 	/** Close host when opening plugin settings (modal). Default false. */
@@ -132,7 +137,7 @@ export class SyncPanelUI {
 	private forestWarnings: string[] = [];
 	private treeHostEl!: HTMLElement;
 	private statusEl!: HTMLElement;
-	private currentTabEl!: HTMLButtonElement;
+	private currentTabEl: HTMLButtonElement | null = null;
 	private allTabEl!: HTMLButtonElement;
 	private archivedTabEl!: HTMLButtonElement;
 	/** Session parse override for the active note (not written to YAML until Save/Update). */
@@ -162,6 +167,9 @@ export class SyncPanelUI {
 		this.options = options;
 		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
 		this.state.cardLevel = this.defaultCardHeadingLevel();
+		if (options.tabsMode === 'forest') {
+			this.state.tab = 'all';
+		}
 	}
 
 	/** Plugin setting default for head-mode card level (YAML deckLevel fallback). */
@@ -194,11 +202,23 @@ export class SyncPanelUI {
 		const contentEl = this.hostEl;
 		contentEl.empty();
 
-		const tabs = contentEl.createDiv({ cls: 'dta-sync-tabs' });
-		this.currentTabEl = tabs.createEl('button', {
-			cls: 'dta-sync-tab',
-			text: '当前卡片',
+		const forestOnly = this.options.tabsMode === 'forest';
+		const tabs = contentEl.createDiv({
+			cls: forestOnly
+				? 'dta-sync-tabs dta-sync-tabs--two'
+				: 'dta-sync-tabs',
 		});
+		if (!forestOnly) {
+			this.currentTabEl = tabs.createEl('button', {
+				cls: 'dta-sync-tab',
+				text: '当前卡片',
+			});
+			this.currentTabEl.addEventListener('click', () => {
+				void this.switchTab('current');
+			});
+		} else {
+			this.currentTabEl = null;
+		}
 		this.allTabEl = tabs.createEl('button', {
 			cls: 'dta-sync-tab',
 			text: '所有卡片',
@@ -206,9 +226,6 @@ export class SyncPanelUI {
 		this.archivedTabEl = tabs.createEl('button', {
 			cls: 'dta-sync-tab',
 			text: '归档卡片',
-		});
-		this.currentTabEl.addEventListener('click', () => {
-			void this.switchTab('current');
 		});
 		this.allTabEl.addEventListener('click', () => {
 			void this.switchTab('all');
@@ -295,11 +312,11 @@ export class SyncPanelUI {
 		this.treeHostEl = bodyEl.createDiv({ cls: 'dta-sync-tree-host' });
 
 		this.progressEl = contentEl.createDiv({
-			cls: 'dta-sync-progress is-hidden',
+			cls: 'dta-sync-progress',
 		});
 		this.progressLabelEl = this.progressEl.createDiv({
 			cls: 'dta-sync-progress-label',
-			text: '',
+			text: '就绪',
 		});
 		const track = this.progressEl.createDiv({
 			cls: 'dta-sync-progress-track',
@@ -308,7 +325,11 @@ export class SyncPanelUI {
 			cls: 'dta-sync-progress-bar',
 		});
 
-		const footer = contentEl.createDiv({ cls: 'dta-sync-footer' });
+		const footer = contentEl.createDiv({
+			cls: this.options.showCancel
+				? 'dta-sync-footer'
+				: 'dta-sync-footer dta-sync-footer--two',
+		});
 
 		const forceBtn = footer.createEl('button', {
 			cls: 'dta-sync-footer-btn mod-warning',
@@ -370,17 +391,16 @@ export class SyncPanelUI {
 	): void {
 		const safeTotal = Math.max(total, 1);
 		const ratio = Math.max(0, Math.min(1, current / safeTotal));
-		this.progressEl.removeClass('is-hidden');
 		this.progressLabelEl.setText(
 			`${label} · ${Math.round(ratio * 100)}%`,
 		);
 		this.progressBarEl.style.width = `${(ratio * 100).toFixed(1)}%`;
 	}
 
+	/** Reset to idle; progress bar stays visible. */
 	private hidePanelProgress(): void {
-		this.progressEl.addClass('is-hidden');
 		this.progressBarEl.style.width = '0%';
-		this.progressLabelEl.setText('');
+		this.progressLabelEl.setText('就绪');
 	}
 
 	/** Keep toolbar / footer / row sync buttons disabled + spinning until done. */
@@ -391,10 +411,12 @@ export class SyncPanelUI {
 			this.refreshBtnEl,
 			this.updateBtnEl,
 			this.forceBtnEl,
-			this.currentTabEl,
 			this.allTabEl,
 			this.archivedTabEl,
 		];
+		if (this.currentTabEl) {
+			controls.push(this.currentTabEl);
+		}
 		for (const el of controls) {
 			el.disabled = busy;
 		}
@@ -454,6 +476,9 @@ export class SyncPanelUI {
 		if (this.busy) {
 			return;
 		}
+		if (this.options.tabsMode === 'forest' && tab === 'current') {
+			tab = 'all';
+		}
 		if (tab === 'current' && !this.getActiveMarkdownFile()) {
 			new Notice('未打开笔记，已切换到「所有卡片」');
 			this.state.tab = 'all';
@@ -500,6 +525,9 @@ export class SyncPanelUI {
 		}
 
 		const file = this.getActiveMarkdownFile();
+		if (this.options.tabsMode === 'forest' && this.state.tab === 'current') {
+			this.state.tab = 'all';
+		}
 		if (this.state.tab === 'current' && !file) {
 			this.state.tab = 'all';
 		}
@@ -1602,7 +1630,7 @@ export class SyncPanelUI {
 	}
 
 	private updateChromeState(): void {
-		this.currentTabEl.toggleClass(
+		this.currentTabEl?.toggleClass(
 			'is-active',
 			this.state.tab === 'current',
 		);

@@ -84,6 +84,9 @@ if you want to view the source, please visit the github repository of this plugi
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
 }
+.dta-sync-tabs--two {
+  grid-template-columns: 1fr 1fr;
+}
 .dta-sync-type-tabs {
   grid-template-columns: 1fr 1fr 1fr;
 }
@@ -505,14 +508,15 @@ if you want to view the source, please visit the github repository of this plugi
   gap: 0.45rem;
   padding-top: 0.1rem;
 }
+.dta-sync-footer.dta-sync-footer--two {
+  grid-template-columns: 1fr 1fr;
+}
 .dta-sync-progress {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   padding: 0.15rem 0.05rem 0.05rem;
-}
-.dta-sync-progress.is-hidden {
-  display: none;
+  flex-shrink: 0;
 }
 .dta-sync-progress-label {
   font-size: 0.8em;
@@ -521,6 +525,7 @@ if you want to view the source, please visit the github repository of this plugi
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-height: 1.3em;
 }
 .dta-sync-progress-track {
   height: 0.4rem;
