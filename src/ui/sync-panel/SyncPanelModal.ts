@@ -426,6 +426,7 @@ export class SyncPanelUI {
 		this.bgCheckId += 1;
 		this.busy = kind;
 		this.busyNodeId = nodeId ?? null;
+		this.startPanelProgress(kind);
 		this.applyBusyChrome();
 		return true;
 	}
@@ -437,6 +438,19 @@ export class SyncPanelUI {
 		this.applyBusyChrome();
 	}
 
+	private startPanelProgress(kind: 'check' | 'sync' | 'reload'): void {
+		const label =
+			kind === 'reload'
+				? '解析中…'
+				: kind === 'check'
+					? '检测中…'
+					: '同步中…';
+		this.progressEl.addClass('is-running');
+		this.progressBarEl.addClass('is-indeterminate');
+		this.progressBarEl.style.width = '';
+		this.progressLabelEl.setText(label);
+	}
+
 	private setPanelProgress(
 		current: number,
 		total: number,
@@ -444,6 +458,8 @@ export class SyncPanelUI {
 	): void {
 		const safeTotal = Math.max(total, 1);
 		const ratio = Math.max(0, Math.min(1, current / safeTotal));
+		this.progressEl.addClass('is-running');
+		this.progressBarEl.removeClass('is-indeterminate');
 		this.progressLabelEl.setText(
 			`${label} · ${Math.round(ratio * 100)}%`,
 		);
@@ -452,6 +468,8 @@ export class SyncPanelUI {
 
 	/** Reset to idle; progress bar stays visible. */
 	private hidePanelProgress(): void {
+		this.progressEl.removeClass('is-running');
+		this.progressBarEl.removeClass('is-indeterminate');
 		this.progressBarEl.style.width = '0%';
 		this.progressLabelEl.setText('就绪');
 	}
@@ -726,7 +744,10 @@ export class SyncPanelUI {
 		this.checkBtnEl.addClass('is-loading');
 		setIcon(this.checkBtnEl, 'loader-circle');
 		this.checkBtnEl.title = '后台检测中…';
-		this.setPanelProgress(0, 1, `后台检测 ${cards.length} 张…`);
+		this.progressEl.addClass('is-running');
+		this.progressBarEl.addClass('is-indeterminate');
+		this.progressBarEl.style.width = '';
+		this.progressLabelEl.setText(`后台检测 ${cards.length} 张…`);
 		this.statusEl.setText(`后台检测 ${cards.length} 张勾选卡片…`);
 
 		try {

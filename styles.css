@@ -814,6 +814,12 @@ if you want to view the source, please visit the github repository of this plugi
   padding: 0.15rem 0.05rem 0.05rem;
   flex-shrink: 0;
 }
+.dta-sync-progress.is-running .dta-sync-progress-label {
+  color: var(--text-normal);
+}
+.dta-sync-progress.is-running .dta-sync-progress-track {
+  background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-modifier-border));
+}
 .dta-sync-progress-label {
   font-size: 0.8em;
   color: var(--text-muted);
@@ -835,6 +841,27 @@ if you want to view the source, please visit the github repository of this plugi
   border-radius: inherit;
   background: var(--interactive-accent);
   transition: width 0.12s ease;
+}
+.dta-sync-progress-bar.is-indeterminate {
+  width: 36%;
+  transition: none;
+  animation: dta-sync-progress-slide 1.15s ease-in-out infinite;
+}
+/* Keep icon spin; never show a top edge progress strip on buttons. */
+.dta-sync-toolbar-btn.is-loading,
+.dta-sync-action.is-loading,
+.dta-sync-footer-btn.is-loading {
+  position: relative;
+  overflow: hidden;
+}
+.dta-sync-toolbar-btn.is-loading::before,
+.dta-sync-action.is-loading::before,
+.dta-sync-footer-btn.is-loading::before,
+.dta-sync-toolbar-btn.is-loading::after,
+.dta-sync-action.is-loading::after,
+.dta-sync-footer-btn.is-loading::after {
+  content: none !important;
+  display: none !important;
 }
 .dta-sync-footer-btn {
   padding: 0.58rem 0.75rem;
@@ -1052,5 +1079,13 @@ if you want to view the source, please visit the github repository of this plugi
   }
   to {
     transform: rotate(360deg);
+  }
+}
+@keyframes dta-sync-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
   }
 }
