@@ -16,8 +16,8 @@ export const BUILT_IN_DECK_TEMPLATE_LABELS: Record<
 	BuiltInDeckTemplateId,
 	string
 > = {
-	'ob-deck-basic': 'ob-deck-basic（单向）',
-	'ob-deck-basic++': 'ob-deck-basic++（可翻转）',
+	'ob-deck-basic': 'ob-deck-basic',
+	'ob-deck-basic++': 'ob-deck-basic++',
 };
 
 /** @deprecated Prefer deckTemplateLabel(). */
@@ -37,6 +37,60 @@ export function allDeckTemplateIds(
 		.map((id) => id.trim())
 		.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id));
 	return [...BUILT_IN_DECK_TEMPLATE_IDS, ...custom];
+}
+
+/**
+ * Ordered template ids for UI / sync.
+ * Keeps user order, then appends any missing builtins, then missing customs.
+ */
+export function normalizeDeckTemplateOrder(
+	order: string[] | undefined | null,
+	customIds: string[] | undefined | null,
+): DeckTemplateId[] {
+	const custom = [
+		...new Set(
+			(customIds ?? [])
+				.map((id) => sanitizeDeckTemplateId(String(id)))
+				.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id)),
+		),
+	];
+	const allowed = new Set<string>([
+		...BUILT_IN_DECK_TEMPLATE_IDS,
+		...custom,
+	]);
+	const seen = new Set<string>();
+	const out: DeckTemplateId[] = [];
+	for (const raw of order ?? []) {
+		const id = sanitizeDeckTemplateId(String(raw));
+		if (!id || seen.has(id) || !allowed.has(id)) {
+			continue;
+		}
+		seen.add(id);
+		out.push(id);
+	}
+	for (const id of BUILT_IN_DECK_TEMPLATE_IDS) {
+		if (!seen.has(id)) {
+			seen.add(id);
+			out.push(id);
+		}
+	}
+	for (const id of custom) {
+		if (!seen.has(id)) {
+			seen.add(id);
+			out.push(id);
+		}
+	}
+	return out;
+}
+
+export function allDeckTemplateIdsOrdered(settings: {
+	deckTemplateOrder?: string[] | null;
+	customDeckTemplates?: string[] | null;
+}): DeckTemplateId[] {
+	return normalizeDeckTemplateOrder(
+		settings.deckTemplateOrder,
+		settings.customDeckTemplates,
+	);
 }
 
 export function deckTemplateLabel(id: string): string {

@@ -12,7 +12,7 @@ if you want to view the source, please visit the github repository of this plugi
 }
 .deck-to-anki-settings .dta-settings-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0.2rem;
   margin: 0 0 0.9rem;
   padding: 0.2rem;
@@ -90,11 +90,145 @@ if you want to view the source, please visit the github repository of this plugi
   font-size: 0.85em;
   line-height: 1.4;
 }
-.deck-to-anki-settings .deck-to-anki-settings-hint {
-  margin: 0.75rem 0.15rem 1rem;
+.deck-to-anki-settings .dta-template-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.55rem;
+}
+.deck-to-anki-settings .dta-template-list-empty {
+  margin: 0.25rem 0 0.35rem;
   color: var(--text-faint);
-  font-size: 0.82em;
-  line-height: 1.45;
+  font-size: 0.85em;
+}
+.deck-to-anki-settings .dta-template-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+}
+.deck-to-anki-settings .dta-template-list-row.is-dragging {
+  opacity: 0.45;
+}
+.deck-to-anki-settings .dta-template-list-row.is-drop-target {
+  border-color: var(--interactive-accent);
+  box-shadow: inset 0 0 0 1px var(--interactive-accent);
+}
+.deck-to-anki-settings .dta-template-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: grab;
+}
+.deck-to-anki-settings .dta-template-drag-handle svg {
+  width: 1rem;
+  height: 1rem;
+}
+.deck-to-anki-settings .dta-template-drag-handle:hover {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+}
+.deck-to-anki-settings .dta-template-drag-handle:active {
+  cursor: grabbing;
+}
+.deck-to-anki-settings .dta-template-list-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.92em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-to-anki-settings .dta-template-list-name.is-hidden {
+  display: none;
+}
+.deck-to-anki-settings .dta-template-list-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 1.7rem;
+  padding: 0 0.45rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.92em;
+}
+.deck-to-anki-settings .dta-template-list-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  flex: 0 0 auto;
+}
+.deck-to-anki-settings .dta-template-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.deck-to-anki-settings .dta-template-action-btn svg {
+  width: 1rem;
+  height: 1rem;
+}
+.deck-to-anki-settings .dta-template-action-btn.is-hidden {
+  display: none;
+}
+.deck-to-anki-settings .dta-template-action-btn:hover:not(:disabled) {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.deck-to-anki-settings .dta-template-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.deck-to-anki-settings .dta-template-action-btn.is-warning {
+  color: var(--text-muted);
+}
+.deck-to-anki-settings .dta-template-action-btn.is-warning:hover:not(:disabled) {
+  color: var(--text-error);
+  background: var(--background-modifier-error-hover, var(--background-modifier-hover));
+}
+.deck-to-anki-settings .dta-template-action-btn.is-confirm:hover:not(:disabled) {
+  color: var(--interactive-accent);
+}
+.deck-to-anki-settings .dta-template-action-row .setting-item-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-start;
+}
+.deck-to-anki-settings .dta-yaml-field-list {
+  margin: 0 0 0.35rem;
+  padding: 0 0 0 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  line-height: 1.55;
+}
+.deck-to-anki-settings .dta-yaml-field-list li {
+  margin: 0.15rem 0;
+}
+.deck-to-anki-settings .dta-yaml-field-list code {
+  font-size: 0.95em;
+  color: var(--text-normal);
 }
 .deck-to-anki-modal {
   padding: 1rem;

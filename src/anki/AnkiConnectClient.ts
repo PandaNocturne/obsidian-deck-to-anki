@@ -42,6 +42,13 @@ export class AnkiConnectClient {
 		return out;
 	}
 
+	async modelStyling(modelName: string): Promise<{ css: string }> {
+		const result = await this.invoke<{ css?: string }>('modelStyling', {
+			modelName,
+		});
+		return { css: result?.css ?? '' };
+	}
+
 	async modelFieldNames(modelName: string): Promise<string[]> {
 		const names = await this.invoke<string[]>('modelFieldNames', {
 			modelName,

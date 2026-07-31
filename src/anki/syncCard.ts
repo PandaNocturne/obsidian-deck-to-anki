@@ -9,7 +9,7 @@ import { cleanupEmptyAnkiDecks } from './cleanupEmptyDecks';
 import { ensureDeckTemplateModel } from './ensureModel';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
-	allDeckTemplateIds,
+	allDeckTemplateIdsOrdered,
 	defaultStyleFor,
 	FIELD_FRONT,
 	type DeckTemplateId,
@@ -71,7 +71,7 @@ function resolveDeckTemplate(
 	yamlValue: string | undefined,
 	settings: DeckToAnkiSettings,
 ): DeckTemplateId {
-	const known = allDeckTemplateIds(settings.customDeckTemplates);
+	const known = allDeckTemplateIdsOrdered(settings);
 	if (yamlValue && known.includes(yamlValue)) {
 		return yamlValue;
 	}
@@ -223,7 +223,7 @@ export async function pushDeckTemplateStylesIfNeeded(
 		return false;
 	}
 
-	for (const id of allDeckTemplateIds(settings.customDeckTemplates)) {
+	for (const id of allDeckTemplateIdsOrdered(settings)) {
 		const style = settings.deckTemplateStyles[id];
 		if (!style) {
 			continue;
@@ -441,7 +441,7 @@ export async function forceUpdateDeckTemplate(
 ): Promise<'created' | 'updated' | 'exists'> {
 	const client = createClient(settings);
 	let last: 'created' | 'updated' | 'exists' = 'exists';
-	for (const id of allDeckTemplateIds(settings.customDeckTemplates)) {
+	for (const id of allDeckTemplateIdsOrdered(settings)) {
 		const style = settings.deckTemplateStyles[id];
 		if (!style) {
 			continue;
@@ -452,4 +452,24 @@ export async function forceUpdateDeckTemplate(
 		settings.deckTemplateStyleVersion ?? 0;
 	await persistSettings?.();
 	return last;
+}
+
+/** Push Front/Back/CSS for a single note type to Anki. */
+export async function forceUpdateOneDeckTemplate(
+	settings: DeckToAnkiSettings,
+	templateId: DeckTemplateId,
+	persistSettings?: () => Promise<void>,
+): Promise<'created' | 'updated' | 'exists'> {
+	const client = createClient(settings);
+	const style =
+		settings.deckTemplateStyles[templateId] ??
+		defaultStyleFor(templateId);
+	const result = await ensureDeckTemplateModel(
+		client,
+		templateId,
+		style,
+		true,
+	);
+	await persistSettings?.();
+	return result;
 }

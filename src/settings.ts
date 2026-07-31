@@ -1,16 +1,16 @@
-import { App, Notice, PluginSettingTab, Setting, TextAreaComponent } from 'obsidian';
+import { App, Notice, PluginSettingTab, Setting, TextAreaComponent, ToggleComponent, setIcon } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
 import type { MediaCompressCache } from './anki/mediaCompressCache';
 import type { MediaProcessOptions } from './anki/processMedia';
-import { forceUpdateDeckTemplate } from './anki/syncCard';
 import {
-	allDeckTemplateIds,
+	allDeckTemplateIdsOrdered,
 	createDefaultDeckTemplateStyles,
 	defaultStyleFor,
 	deckTemplateLabel,
 	isBuiltInDeckTemplate,
 	isReversibleDeckTemplate,
 	normalizeDeckCardKind,
+	normalizeDeckTemplateOrder,
 	sanitizeDeckTemplateId,
 	BUILT_IN_DECK_TEMPLATE_IDS,
 	DECK_CARD_KIND_AVAILABLE,
@@ -20,6 +20,11 @@ import {
 	type DeckTemplateId,
 	type DeckTemplateStyle,
 } from './anki/templates';
+import { AnkiConnectClient } from './anki/AnkiConnectClient';
+import { importDeckTemplateStyleFromAnki, blankCustomTemplateStyle } from './anki/importTemplateStyle';
+import {
+	forceUpdateOneDeckTemplate,
+} from './anki/syncCard';
 import type { BacklinkScheme } from './anki/backlink';
 import type { DeckType } from './domain/head/types';
 import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
@@ -48,6 +53,8 @@ export interface DeckToAnkiSettings {
 	deckTemplate: DeckTemplateId;
 	/** User-defined Anki note type ids (in addition to built-ins). */
 	customDeckTemplates: string[];
+	/** Display / sync order of all template ids (builtins + custom). */
+	deckTemplateOrder: string[];
 	/** Editable Front/Back/CSS per note type. Synced on create or force update. */
 	deckTemplateStyles: Record<string, DeckTemplateStyle>;
 	/** Tracks built-in style revisions; bump refreshes defaults once. */
@@ -106,6 +113,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	ankiConnectUrl: 'http://127.0.0.1:8765',
 	deckTemplate: 'ob-deck-basic',
 	customDeckTemplates: [],
+	deckTemplateOrder: [...BUILT_IN_DECK_TEMPLATE_IDS],
 	deckTemplateStyles: createDefaultDeckTemplateStyles(),
 	deckTemplateStyleVersion: DECK_TEMPLATE_STYLE_VERSION,
 	ankiTemplateSyncedVersion: 0,
@@ -139,6 +147,10 @@ export function mergeSettings(
 				.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id))
 		: [];
 	base.customDeckTemplates = [...new Set(customIds)];
+	base.deckTemplateOrder = normalizeDeckTemplateOrder(
+		base.deckTemplateOrder,
+		base.customDeckTemplates,
+	);
 
 	const basicDefault = defaults['ob-deck-basic'] ?? defaultStyleFor('ob-deck-basic');
 	const preserveCustomStyles = (): Record<string, DeckTemplateStyle> => {
@@ -186,7 +198,7 @@ export function mergeSettings(
 		base.deckTemplateStyles = styles;
 	}
 
-	const knownIds = allDeckTemplateIds(base.customDeckTemplates);
+	const knownIds = allDeckTemplateIdsOrdered(base);
 	if (!knownIds.includes(base.deckTemplate)) {
 		base.deckTemplate = 'ob-deck-basic';
 	}
@@ -259,11 +271,38 @@ export function mediaProcessOptionsFromSettings(
 export class DeckToAnkiSettingTab extends PluginSettingTab {
 	plugin: DeckToAnkiPlugin;
 	/** Remember last settings tab across display() rebuilds. */
-	private activeSettingsTab: 'parse' | 'sync' | 'template' = 'parse';
+	private activeSettingsTab: 'parse' | 'sync' | 'template' | 'fields' =
+		'parse';
+	/** Template being edited in 模板设置 (independent of default type). */
+	private editingTemplateId: DeckTemplateId | null = null;
 
 	constructor(app: App, plugin: DeckToAnkiPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	private orderedTemplateIds(): DeckTemplateId[] {
+		return allDeckTemplateIdsOrdered(this.plugin.settings);
+	}
+
+	private resolveEditingTemplateId(): DeckTemplateId {
+		const known = this.orderedTemplateIds();
+		const current = this.editingTemplateId;
+		if (current && known.includes(current)) {
+			return current;
+		}
+		const fallback = this.plugin.settings.deckTemplate;
+		const id = known.includes(fallback) ? fallback : 'ob-deck-basic';
+		this.editingTemplateId = id;
+		return id;
+	}
+
+	private ankiClient(): AnkiConnectClient {
+		return new AnkiConnectClient(
+			() =>
+				this.plugin.settings.ankiConnectUrl ||
+				'http://127.0.0.1:8765',
+		);
 	}
 
 	display(): void {
@@ -287,6 +326,11 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			text: '模板',
 			attr: { type: 'button' },
 		});
+		const fieldsTab = tabBar.createEl('button', {
+			cls: 'dta-settings-tab',
+			text: '字段',
+			attr: { type: 'button' },
+		});
 
 		const parsePanel = containerEl.createDiv({
 			cls: 'dta-settings-panel',
@@ -298,26 +342,27 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		});
 		this.renderSyncSettings(syncPanel);
 		this.renderMediaSettings(syncPanel);
-		this.renderCustomFieldSettings(syncPanel);
 
 		const templatePanel = containerEl.createDiv({
 			cls: 'dta-settings-panel',
 		});
 		this.renderTemplateSettings(templatePanel);
 
-		containerEl.createEl('p', {
-			cls: 'deck-to-anki-settings-hint',
-			text: '笔记 YAML（camelCase）：deckType、deckName、deckLevel、deckStatus、deckTemplate、deckFile、deckNumbering。',
+		const fieldsPanel = containerEl.createDiv({
+			cls: 'dta-settings-panel',
 		});
+		this.renderCustomFieldSettings(fieldsPanel);
 
 		const syncTabs = (): void => {
 			const tab = this.activeSettingsTab;
 			parseTab.toggleClass('is-active', tab === 'parse');
 			syncTab.toggleClass('is-active', tab === 'sync');
 			templateTab.toggleClass('is-active', tab === 'template');
+			fieldsTab.toggleClass('is-active', tab === 'fields');
 			parsePanel.toggle(tab === 'parse');
 			syncPanel.toggle(tab === 'sync');
 			templatePanel.toggle(tab === 'template');
+			fieldsPanel.toggle(tab === 'fields');
 		};
 
 		parseTab.addEventListener('click', () => {
@@ -330,6 +375,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		});
 		templateTab.addEventListener('click', () => {
 			this.activeSettingsTab = 'template';
+			syncTabs();
+		});
+		fieldsTab.addEventListener('click', () => {
+			this.activeSettingsTab = 'fields';
 			syncTabs();
 		});
 		syncTabs();
@@ -422,6 +471,50 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		const yamlSection = this.beginSection(
+			containerEl,
+			'笔记 YAML',
+			'单篇笔记 frontmatter 使用 camelCase 字段（可覆盖插件默认）。',
+		);
+		const yamlList = yamlSection.createEl('ul', {
+			cls: 'dta-yaml-field-list',
+		});
+		const yamlFields: Array<{ key: string; desc: string }> = [
+			{
+				key: 'deckType',
+				desc: '解析模式：file / head / list / card。',
+			},
+			{
+				key: 'deckName',
+				desc: '牌组显示名；缺省时由文件名或标题推断。',
+			},
+			{
+				key: 'deckLevel',
+				desc: 'Head 模式：作为卡片正面的标题层级（1–6）。',
+			},
+			{
+				key: 'deckStatus',
+				desc: '学习状态：false = 学习中，true = 已归档。',
+			},
+			{
+				key: 'deckTemplate',
+				desc: '同步到 Anki 时使用的笔记类型。',
+			},
+			{
+				key: 'deckFile',
+				desc: 'File 模式：指向子牌组笔记的 wiki 链接。',
+			},
+			{
+				key: 'deckNumbering',
+				desc: '是否在同步树与 Anki 牌组路径显示序号。',
+			},
+		];
+		for (const field of yamlFields) {
+			const item = yamlList.createEl('li');
+			item.createEl('code', { text: field.key });
+			item.appendText(` — ${field.desc}`);
+		}
 	}
 
 	private renderSyncSettings(containerEl: HTMLElement): void {
@@ -554,13 +647,92 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const cardSection = this.beginSection(
 			containerEl,
 			'卡片模板',
-			'选择默认笔记类型，或将当前样式另存为新的 Anki 笔记类型。',
+			'笔记 YAML 无 deckTemplate 时使用的默认笔记类型。可在牌组设置中按笔记覆盖。',
 		);
+
+		new Setting(cardSection)
+			.setName('默认类型')
+			.addDropdown((dropdown) => {
+				for (const id of this.orderedTemplateIds()) {
+					dropdown.addOption(id, deckTemplateLabel(id));
+				}
+				dropdown
+					.setValue(this.plugin.settings.deckTemplate)
+					.onChange(async (value) => {
+						this.plugin.settings.deckTemplate =
+							value as DeckTemplateId;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		const manageSection = this.beginSection(
+			containerEl,
+			'模板管理',
+			'管理自定义模板：新建、重命名、删除；左侧拖拽排序。内置默认模板不在此列表。',
+		);
+
+		let newName = '';
+		new Setting(manageSection)
+			.setName('新建模板')
+			.setDesc('名称即 Anki 笔记类型名；默认问答型、不可翻转。')
+			.addText((text) =>
+				text
+					.setPlaceholder('例如 My Deck Template')
+					.onChange((value) => {
+						newName = value;
+					}),
+			)
+			.addButton((btn) =>
+				btn.setButtonText('新建').setCta().onClick(async () => {
+					const name = sanitizeDeckTemplateId(newName);
+					if (!name) {
+						new Notice('请输入模板名称');
+						return;
+					}
+					if (this.orderedTemplateIds().includes(name)) {
+						new Notice(`模板「${name}」已存在`);
+						return;
+					}
+					this.plugin.settings.deckTemplateStyles[name] =
+						blankCustomTemplateStyle();
+					this.plugin.settings.customDeckTemplates = [
+						...this.plugin.settings.customDeckTemplates,
+						name,
+					];
+					this.plugin.settings.deckTemplateOrder = [
+						...this.orderedTemplateIds(),
+						name,
+					];
+					this.plugin.settings.deckTemplateOrder =
+						normalizeDeckTemplateOrder(
+							this.plugin.settings.deckTemplateOrder,
+							this.plugin.settings.customDeckTemplates,
+						);
+					this.editingTemplateId = name;
+					await this.plugin.saveSettings();
+					new Notice(`已新建模板「${name}」`);
+					this.display();
+				}),
+			);
+
+		const listEl = manageSection.createDiv({ cls: 'dta-template-list' });
+		const customOrder = this.orderedTemplateIds().filter(
+			(id) => !isBuiltInDeckTemplate(id),
+		);
+
+		if (customOrder.length === 0) {
+			listEl.createEl('p', {
+				cls: 'dta-template-list-empty',
+				text: '暂无自定义模板',
+			});
+		} else {
+			this.renderCustomTemplateList(listEl, customOrder);
+		}
 
 		const styleSection = this.beginSection(
 			containerEl,
-			'样式设置',
-			'编辑当前笔记类型的 Front / Back / CSS。',
+			'模板设置',
+			'编辑所选模板的 Front / Back / CSS，并推送到 Anki。',
 		);
 
 		styleSection.createEl('p', {
@@ -568,135 +740,78 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			text: 'ob-deck-head：标题 · ob-deck-front：正面正文 · ob-deck-back：背面 · ob-deck-tags：标签 · ob-deck-backlink：回链 · ob-deck-tree：牌组树',
 		});
 
-		const knownIds = (): DeckTemplateId[] =>
-			allDeckTemplateIds(this.plugin.settings.customDeckTemplates);
-
-		const templateId = this.plugin.settings.deckTemplate;
+		const editingId = this.resolveEditingTemplateId();
 		const style =
-			this.plugin.settings.deckTemplateStyles[templateId] ??
-			defaultStyleFor(templateId);
+			this.plugin.settings.deckTemplateStyles[editingId] ??
+			defaultStyleFor(editingId);
 
-		const headingEl = styleSection.createEl('h4', {
-			text: `样式 · ${deckTemplateLabel(templateId)}`,
+		const controlsHost = styleSection.createDiv({
+			cls: 'dta-template-style-controls',
+		});
+		const editorsHost = styleSection.createDiv({
+			cls: 'dta-template-style-editors',
+		});
+		const actionsHost = styleSection.createDiv({
+			cls: 'dta-template-style-actions',
 		});
 
-		const frontArea = this.addTemplateTextArea(
-			styleSection,
-			'正面模板',
-			'Anki 卡片正面 HTML（可用 {{ob-deck-head}} {{ob-deck-front}} {{ob-deck-back}} {{ob-deck-tags}} {{ob-deck-tree}} {{ob-deck-backlink}}）',
-			style.front,
-			async (value) => {
-				const id = this.plugin.settings.deckTemplate;
-				const st =
-					this.plugin.settings.deckTemplateStyles[id] ??
-					defaultStyleFor(id);
-				st.front = value;
-				this.plugin.settings.deckTemplateStyles[id] = st;
-				await this.plugin.saveSettings();
-			},
-		);
+		let kindDropdown!: HTMLSelectElement;
+		let reversibleToggle!: ToggleComponent;
+		let frontArea!: TextAreaComponent;
+		let backArea!: TextAreaComponent;
+		let cssArea!: TextAreaComponent;
 
-		const backArea = this.addTemplateTextArea(
-			styleSection,
-			'背面模板',
-			'Anki 卡片背面 HTML',
-			style.back,
-			async (value) => {
-				const id = this.plugin.settings.deckTemplate;
-				const st =
-					this.plugin.settings.deckTemplateStyles[id] ??
-					defaultStyleFor(id);
-				st.back = value;
-				this.plugin.settings.deckTemplateStyles[id] = st;
-				await this.plugin.saveSettings();
-			},
-		);
+		const styleOf = (id: DeckTemplateId): DeckTemplateStyle =>
+			this.plugin.settings.deckTemplateStyles[id] ?? defaultStyleFor(id);
 
-		const cssArea = this.addTemplateTextArea(
-			styleSection,
-			'卡片 CSS',
-			'笔记类型 CSS（仅首次创建或强制更新时同步到 Anki）',
-			style.css,
-			async (value) => {
-				const id = this.plugin.settings.deckTemplate;
-				const st =
-					this.plugin.settings.deckTemplateStyles[id] ??
-					defaultStyleFor(id);
-				st.css = value;
-				this.plugin.settings.deckTemplateStyles[id] = st;
-				await this.plugin.saveSettings();
-			},
-			12,
-		);
+		const persistStyle = async (
+			id: DeckTemplateId,
+			patch: Partial<DeckTemplateStyle>,
+		): Promise<void> => {
+			const st = { ...styleOf(id), ...patch };
+			this.plugin.settings.deckTemplateStyles[id] = st;
+			await this.plugin.saveSettings();
+		};
 
-		const applyStyleToEditors = (id: DeckTemplateId): void => {
-			const next =
-				this.plugin.settings.deckTemplateStyles[id] ??
-				defaultStyleFor(id);
-			headingEl.setText(`样式 · ${deckTemplateLabel(id)}`);
+		const refreshStyleControls = (id: DeckTemplateId): void => {
+			const next = styleOf(id);
+			const kind = normalizeDeckCardKind(next.kind);
+			kindDropdown.value = DECK_CARD_KIND_AVAILABLE[kind] ? kind : 'qa';
+			reversibleToggle.setValue(isReversibleDeckTemplate(id, next));
+			reversibleToggle.setDisabled(id === 'ob-deck-basic++');
 			frontArea.setValue(next.front);
 			backArea.setValue(next.back);
 			cssArea.setValue(next.css);
 		};
 
-		new Setting(styleSection)
-			.setName('重置样式')
-			.setDesc('将当前笔记类型的正面 / 背面 / CSS 恢复为插件内置默认（保留可翻转设置）。')
-			.addButton((btn) =>
-				btn.setButtonText('重置').onClick(async () => {
-					const id = this.plugin.settings.deckTemplate;
-					const prev = this.plugin.settings.deckTemplateStyles[id];
-					const defaults = defaultStyleFor(id);
-					this.plugin.settings.deckTemplateStyles[id] = {
-						front: defaults.front,
-						back: defaults.back,
-						css: defaults.css,
-						reversible: isReversibleDeckTemplate(id, prev),
-						kind: normalizeDeckCardKind(prev?.kind),
-					};
-					applyStyleToEditors(id);
-					await this.plugin.saveSettings();
-					new Notice(`已重置 ${deckTemplateLabel(id)} 的样式`);
-				}),
-			);
-
-		new Setting(cardSection)
-			.setName('默认笔记类型')
-			.setDesc(
-				'笔记 YAML 无 deckTemplate 时使用。可在牌组设置中按笔记覆盖。',
-			)
+		new Setting(controlsHost)
+			.setName('模板')
+			.setDesc('选择要编辑样式的笔记类型（可与默认类型不同）。')
 			.addDropdown((dropdown) => {
-				for (const id of knownIds()) {
+				for (const id of this.orderedTemplateIds()) {
 					dropdown.addOption(id, deckTemplateLabel(id));
 				}
-				dropdown
-					.setValue(this.plugin.settings.deckTemplate)
-					.onChange(async (value) => {
-						const id = value as DeckTemplateId;
-						this.plugin.settings.deckTemplate = id;
-						await this.plugin.saveSettings();
-						applyStyleToEditors(id);
-						this.display();
-					});
+				dropdown.setValue(editingId).onChange((value) => {
+					const id = value as DeckTemplateId;
+					this.editingTemplateId = id;
+					refreshStyleControls(id);
+				});
 			});
 
-		new Setting(cardSection)
+		new Setting(controlsHost)
 			.setName('模板类型')
 			.setDesc(
 				'问答型：正反面问答。判断型 / 选择型 / 填空型暂未开放。',
 			)
 			.addDropdown((dropdown) => {
+				kindDropdown = dropdown.selectEl;
 				for (const kind of DECK_CARD_KIND_IDS) {
 					const label = DECK_CARD_KIND_AVAILABLE[kind]
 						? DECK_CARD_KIND_LABELS[kind]
 						: `${DECK_CARD_KIND_LABELS[kind]}（暂未开放）`;
 					dropdown.addOption(kind, label);
 				}
-				const id = this.plugin.settings.deckTemplate;
-				const current =
-					this.plugin.settings.deckTemplateStyles[id] ??
-					defaultStyleFor(id);
-				const kind = normalizeDeckCardKind(current.kind);
+				const kind = normalizeDeckCardKind(style.kind);
 				dropdown.setValue(
 					DECK_CARD_KIND_AVAILABLE[kind] ? kind : 'qa',
 				);
@@ -717,135 +832,92 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						dropdown.setValue('qa');
 						return;
 					}
-					const tid = this.plugin.settings.deckTemplate;
-					const st =
-						this.plugin.settings.deckTemplateStyles[tid] ??
-						defaultStyleFor(tid);
-					st.kind = next;
-					this.plugin.settings.deckTemplateStyles[tid] = st;
-					await this.plugin.saveSettings();
+					await persistStyle(this.resolveEditingTemplateId(), {
+						kind: next,
+					});
 				});
 			});
 
-		new Setting(cardSection)
-			.setName('是否可翻转')
-			.setDesc(
-				'开启后，一张笔记在 Anki 中生成两张卡片：正面→背面 与 背面→正面。ob-deck-basic++ 即默认开启可翻转。改动后请「强制更新」到 Anki。',
-			)
+		new Setting(controlsHost)
+			.setName('是否翻转')
+			.setDesc('True：生成正反两张卡片；False：仅正面→背面。ob-deck-basic++ 锁定为 True。')
 			.addToggle((toggle) => {
-				const id = this.plugin.settings.deckTemplate;
-				const current =
-					this.plugin.settings.deckTemplateStyles[id] ??
-					defaultStyleFor(id);
+				reversibleToggle = toggle;
+				const id = editingId;
 				const locked = id === 'ob-deck-basic++';
 				toggle
-					.setValue(isReversibleDeckTemplate(id, current))
+					.setValue(isReversibleDeckTemplate(id, style))
 					.setDisabled(locked)
 					.onChange(async (value) => {
-						const tid = this.plugin.settings.deckTemplate;
+						const tid = this.resolveEditingTemplateId();
 						if (tid === 'ob-deck-basic++') {
 							return;
 						}
-						const st =
-							this.plugin.settings.deckTemplateStyles[tid] ??
-							defaultStyleFor(tid);
-						st.reversible = value;
-						this.plugin.settings.deckTemplateStyles[tid] = st;
-						await this.plugin.saveSettings();
+						await persistStyle(tid, { reversible: value });
 					});
 			});
 
-		let saveAsName = '';
-		new Setting(cardSection)
-			.setName('另存为新模板')
-			.setDesc(
-				'用当前 Front / Back / CSS 与可翻转设置，创建新的 Anki 笔记类型（名称即 model 名）。',
-			)
-			.addText((text) =>
-				text
-					.setPlaceholder('例如 My Deck Template')
-					.onChange((value) => {
-						saveAsName = value;
-					}),
-			)
-			.addButton((btn) =>
-				btn.setButtonText('保存').setCta().onClick(async () => {
-					const name = sanitizeDeckTemplateId(saveAsName);
-					if (!name) {
-						new Notice('请输入新模板名称');
-						return;
-					}
-					if (knownIds().includes(name)) {
-						new Notice(`模板「${name}」已存在`);
-						return;
-					}
-					const fromId = this.plugin.settings.deckTemplate;
-					const from =
-						this.plugin.settings.deckTemplateStyles[fromId] ??
-						defaultStyleFor(fromId);
-					this.plugin.settings.deckTemplateStyles[name] = {
-						front: from.front,
-						back: from.back,
-						css: from.css,
-						reversible: isReversibleDeckTemplate(fromId, from),
-						kind: normalizeDeckCardKind(from.kind),
-					};
-					this.plugin.settings.customDeckTemplates = [
-						...this.plugin.settings.customDeckTemplates,
-						name,
-					];
-					this.plugin.settings.deckTemplate = name;
-					await this.plugin.saveSettings();
-					new Notice(`已保存模板「${name}」`);
-					this.display();
-				}),
-			);
+		frontArea = this.addTemplateTextArea(
+			editorsHost,
+			'Front HTML',
+			'Anki 卡片正面 HTML（可用 {{ob-deck-head}} {{ob-deck-front}} {{ob-deck-back}} {{ob-deck-tags}} {{ob-deck-tree}} {{ob-deck-backlink}}）',
+			style.front,
+			async (value) => {
+				await persistStyle(this.resolveEditingTemplateId(), {
+					front: value,
+				});
+			},
+		);
 
-		if (!isBuiltInDeckTemplate(this.plugin.settings.deckTemplate)) {
-			new Setting(cardSection)
-				.setName('删除当前自定义模板')
-				.setDesc(
-					'仅从插件设置移除；不会删除 Anki 中已有的笔记类型。',
-				)
-				.addButton((btn) =>
-					btn.setButtonText('删除').setWarning().onClick(async () => {
-						const id = this.plugin.settings.deckTemplate;
-						if (isBuiltInDeckTemplate(id)) {
-							return;
-						}
-						this.plugin.settings.customDeckTemplates =
-							this.plugin.settings.customDeckTemplates.filter(
-								(x) => x !== id,
-							);
-						delete this.plugin.settings.deckTemplateStyles[id];
-						this.plugin.settings.deckTemplate = 'ob-deck-basic';
-						await this.plugin.saveSettings();
-						new Notice(`已删除自定义模板「${id}」`);
-						this.display();
-					}),
-				);
-		}
+		backArea = this.addTemplateTextArea(
+			editorsHost,
+			'Back HTML',
+			'Anki 卡片背面 HTML',
+			style.back,
+			async (value) => {
+				await persistStyle(this.resolveEditingTemplateId(), {
+					back: value,
+				});
+			},
+		);
 
-		new Setting(cardSection)
-			.setName('强制更新模板到 Anki')
-			.setDesc(
-				'将所有内置与自定义模板的正面 / 背面 / CSS 写入 Anki。',
-			)
+		cssArea = this.addTemplateTextArea(
+			editorsHost,
+			'Deck CSS',
+			'笔记类型 CSS（更新时同步到 Anki）',
+			style.css,
+			async (value) => {
+				await persistStyle(this.resolveEditingTemplateId(), {
+					css: value,
+				});
+			},
+			12,
+		);
+
+		const actionRow = new Setting(actionsHost);
+		actionRow.settingEl.addClass('dta-template-action-row');
+		actionRow
 			.addButton((btn) =>
 				btn
-					.setButtonText('强制更新')
+					.setButtonText('更新')
 					.setCta()
 					.onClick(async () => {
+						const id = this.resolveEditingTemplateId();
 						btn.setDisabled(true);
 						try {
-							const result = await forceUpdateDeckTemplate(
+							const result = await forceUpdateOneDeckTemplate(
 								this.plugin.settings,
+								id,
 								() => this.plugin.saveSettings(),
 							);
 							if (result === 'created') {
-								new Notice('已创建并更新笔记类型');
+								new Notice(
+									`已创建并更新「${deckTemplateLabel(id)}」`,
+								);
 							} else {
-								new Notice('已强制更新全部模板样式');
+								new Notice(
+									`已更新「${deckTemplateLabel(id)}」到 Anki`,
+								);
 							}
 						} catch (error) {
 							const msg =
@@ -857,14 +929,403 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 							btn.setDisabled(false);
 						}
 					}),
+			)
+			.addButton((btn) =>
+				btn
+					.setButtonText('重置')
+					.setWarning()
+					.onClick(async () => {
+						const id = this.resolveEditingTemplateId();
+						const prev = styleOf(id);
+						const defaults = defaultStyleFor(id);
+						this.plugin.settings.deckTemplateStyles[id] = {
+							front: defaults.front,
+							back: defaults.back,
+							css: defaults.css,
+							reversible: isReversibleDeckTemplate(id, prev),
+							kind: normalizeDeckCardKind(prev.kind),
+						};
+						await this.plugin.saveSettings();
+						refreshStyleControls(id);
+						new Notice(`已重置 ${deckTemplateLabel(id)} 的样式`);
+					}),
+			)
+			.addButton((btn) =>
+				btn.setButtonText('导入').onClick(async () => {
+					const id = this.resolveEditingTemplateId();
+					btn.setDisabled(true);
+					try {
+						const imported = await importDeckTemplateStyleFromAnki(
+							this.ankiClient(),
+							id,
+							styleOf(id),
+						);
+						this.plugin.settings.deckTemplateStyles[id] = imported;
+						await this.plugin.saveSettings();
+						refreshStyleControls(id);
+						new Notice(
+							`已从 Anki 导入「${deckTemplateLabel(id)}」`,
+						);
+					} catch (error) {
+						const msg =
+							error instanceof Error
+								? error.message
+								: String(error);
+						new Notice(`导入失败：${msg}`);
+					} finally {
+						btn.setDisabled(false);
+					}
+				}),
 			);
+	}
+
+	/**
+	 * Reorder custom templates inside deckTemplateOrder while keeping
+	 * built-in slots in place.
+	 */
+	private applyCustomTemplateOrder(newCustomOrder: string[]): void {
+		const full = this.orderedTemplateIds();
+		const queue = [...newCustomOrder];
+		const merged = full.map((id) =>
+			isBuiltInDeckTemplate(id) ? id : (queue.shift() ?? id),
+		);
+		this.plugin.settings.deckTemplateOrder = normalizeDeckTemplateOrder(
+			[...merged, ...queue],
+			this.plugin.settings.customDeckTemplates,
+		);
+	}
+
+	private renderCustomTemplateList(
+		listEl: HTMLElement,
+		customOrder: string[],
+	): void {
+		let dragFromId: string | null = null;
+		let editingRow: HTMLElement | null = null;
+
+		const persistOrderFromDom = async (): Promise<void> => {
+			const next = Array.from(
+				listEl.querySelectorAll<HTMLElement>('.dta-template-list-row'),
+			)
+				.map((row) => row.dataset.templateId ?? '')
+				.filter((id) => id.length > 0);
+			this.applyCustomTemplateOrder(next);
+			await this.plugin.saveSettings();
+		};
+
+		const exitEditMode = (row: HTMLElement): void => {
+			const nameEl = row.querySelector('.dta-template-list-name');
+			const input = row.querySelector<HTMLInputElement>(
+				'.dta-template-list-input',
+			);
+			const actions = row.querySelector('.dta-template-list-actions');
+			const id = row.dataset.templateId ?? '';
+			if (nameEl instanceof HTMLElement) {
+				nameEl.setText(deckTemplateLabel(id));
+				nameEl.removeClass('is-hidden');
+			}
+			input?.remove();
+			actions?.querySelectorAll('.dta-template-edit-btn').forEach((el) => {
+				el.remove();
+			});
+			actions
+				?.querySelectorAll('.dta-template-action-btn.is-idle')
+				.forEach((el) => el.removeClass('is-hidden'));
+			row.removeClass('is-editing');
+			if (editingRow === row) {
+				editingRow = null;
+			}
+		};
+
+		const enterEditMode = (row: HTMLElement, id: string): void => {
+			if (editingRow && editingRow !== row) {
+				exitEditMode(editingRow);
+			}
+			if (row.hasClass('is-editing')) {
+				return;
+			}
+			editingRow = row;
+			row.addClass('is-editing');
+			row.draggable = false;
+
+			const nameEl = row.querySelector('.dta-template-list-name');
+			const actions = row.querySelector('.dta-template-list-actions');
+			if (!(nameEl instanceof HTMLElement) || !actions) {
+				return;
+			}
+
+			nameEl.addClass('is-hidden');
+			actions
+				.querySelectorAll('.dta-template-action-btn.is-idle')
+				.forEach((el) => el.addClass('is-hidden'));
+
+			const input = row.createEl('input', {
+				cls: 'dta-template-list-input',
+				attr: { type: 'text', spellcheck: 'false' },
+			});
+			input.value = id;
+			nameEl.insertAdjacentElement('afterend', input);
+			input.focus();
+			input.select();
+
+			const cancelBtn = actions.createEl('button', {
+				cls: 'dta-template-action-btn dta-template-edit-btn',
+				attr: {
+					type: 'button',
+					title: '取消',
+					'aria-label': '取消',
+				},
+			});
+			setIcon(cancelBtn, 'x');
+
+			const confirmBtn = actions.createEl('button', {
+				cls: 'dta-template-action-btn dta-template-edit-btn is-confirm',
+				attr: {
+					type: 'button',
+					title: '确认',
+					'aria-label': '确认',
+				},
+			});
+			setIcon(confirmBtn, 'check');
+
+			const cancel = (): void => {
+				exitEditMode(row);
+			};
+
+			const confirm = async (): Promise<void> => {
+				const next = sanitizeDeckTemplateId(input.value);
+				if (!next || next === id) {
+					exitEditMode(row);
+					return;
+				}
+				const ok = await this.renameCustomTemplate(id, next);
+				if (!ok) {
+					input.focus();
+					input.select();
+					return;
+				}
+			};
+
+			cancelBtn.addEventListener('click', (event) => {
+				event.preventDefault();
+				cancel();
+			});
+			confirmBtn.addEventListener('click', (event) => {
+				event.preventDefault();
+				void confirm();
+			});
+			input.addEventListener('keydown', (event) => {
+				if (event.key === 'Enter') {
+					event.preventDefault();
+					void confirm();
+				} else if (event.key === 'Escape') {
+					event.preventDefault();
+					cancel();
+				}
+			});
+		};
+
+		for (const id of customOrder) {
+			const row = listEl.createDiv({ cls: 'dta-template-list-row' });
+			row.dataset.templateId = id;
+			row.draggable = false;
+
+			const handle = row.createEl('button', {
+				cls: 'dta-template-drag-handle',
+				attr: {
+					type: 'button',
+					title: '拖拽排序',
+					'aria-label': '拖拽排序',
+				},
+			});
+			setIcon(handle, 'grip-vertical');
+			handle.addEventListener('mousedown', () => {
+				if (row.hasClass('is-editing')) {
+					return;
+				}
+				row.draggable = true;
+			});
+			handle.addEventListener('mouseup', () => {
+				row.draggable = false;
+			});
+
+			row.createSpan({
+				cls: 'dta-template-list-name',
+				text: deckTemplateLabel(id),
+			});
+
+			const actions = row.createDiv({
+				cls: 'dta-template-list-actions',
+			});
+
+			const renameBtn = actions.createEl('button', {
+				cls: 'dta-template-action-btn is-idle',
+				attr: {
+					type: 'button',
+					title: '重命名',
+					'aria-label': '重命名',
+				},
+			});
+			setIcon(renameBtn, 'pencil');
+			renameBtn.addEventListener('click', (event) => {
+				event.preventDefault();
+				enterEditMode(row, id);
+			});
+
+			const deleteBtn = actions.createEl('button', {
+				cls: 'dta-template-action-btn is-idle is-warning',
+				attr: {
+					type: 'button',
+					title: '删除',
+					'aria-label': '删除',
+				},
+			});
+			setIcon(deleteBtn, 'trash-2');
+			deleteBtn.addEventListener('click', async (event) => {
+				event.preventDefault();
+				this.plugin.settings.customDeckTemplates =
+					this.plugin.settings.customDeckTemplates.filter(
+						(x) => x !== id,
+					);
+				delete this.plugin.settings.deckTemplateStyles[id];
+				this.plugin.settings.deckTemplateOrder =
+					normalizeDeckTemplateOrder(
+						this.plugin.settings.deckTemplateOrder.filter(
+							(x) => x !== id,
+						),
+						this.plugin.settings.customDeckTemplates,
+					);
+				if (this.plugin.settings.deckTemplate === id) {
+					this.plugin.settings.deckTemplate = 'ob-deck-basic';
+				}
+				if (this.editingTemplateId === id) {
+					this.editingTemplateId = 'ob-deck-basic';
+				}
+				await this.plugin.saveSettings();
+				new Notice(`已删除自定义模板「${id}」`);
+				this.display();
+			});
+
+			row.addEventListener('dragstart', (event) => {
+				if (!row.draggable || row.hasClass('is-editing')) {
+					event.preventDefault();
+					return;
+				}
+				dragFromId = id;
+				row.addClass('is-dragging');
+				event.dataTransfer?.setData('text/plain', id);
+				if (event.dataTransfer) {
+					event.dataTransfer.effectAllowed = 'move';
+				}
+			});
+
+			row.addEventListener('dragend', () => {
+				dragFromId = null;
+				row.draggable = false;
+				row.removeClass('is-dragging');
+				listEl
+					.querySelectorAll('.dta-template-list-row.is-drop-target')
+					.forEach((el) => el.removeClass('is-drop-target'));
+			});
+
+			row.addEventListener('dragover', (event) => {
+				event.preventDefault();
+				if (!dragFromId || dragFromId === id || row.hasClass('is-editing')) {
+					return;
+				}
+				if (event.dataTransfer) {
+					event.dataTransfer.dropEffect = 'move';
+				}
+				listEl
+					.querySelectorAll('.dta-template-list-row.is-drop-target')
+					.forEach((el) => el.removeClass('is-drop-target'));
+				row.addClass('is-drop-target');
+			});
+
+			row.addEventListener('dragleave', () => {
+				row.removeClass('is-drop-target');
+			});
+
+			row.addEventListener('drop', (event) => {
+				event.preventDefault();
+				row.removeClass('is-drop-target');
+				const fromId =
+					dragFromId ?? event.dataTransfer?.getData('text/plain');
+				if (!fromId || fromId === id) {
+					return;
+				}
+				const rows = Array.from(
+					listEl.querySelectorAll<HTMLElement>(
+						'.dta-template-list-row',
+					),
+				);
+				const fromRow = rows.find(
+					(el) => el.dataset.templateId === fromId,
+				);
+				if (!fromRow || fromRow === row) {
+					return;
+				}
+				const rect = row.getBoundingClientRect();
+				const before = event.clientY < rect.top + rect.height / 2;
+				if (before) {
+					listEl.insertBefore(fromRow, row);
+				} else {
+					listEl.insertBefore(fromRow, row.nextSibling);
+				}
+				void persistOrderFromDom();
+			});
+		}
+	}
+
+	/** @returns false when rename was rejected (duplicate / invalid). */
+	private async renameCustomTemplate(
+		oldId: string,
+		rawName: string,
+	): Promise<boolean> {
+		if (isBuiltInDeckTemplate(oldId)) {
+			return false;
+		}
+		const name = sanitizeDeckTemplateId(rawName);
+		if (!name || name === oldId) {
+			return true;
+		}
+		if (this.orderedTemplateIds().includes(name)) {
+			new Notice(`模板「${name}」已存在`);
+			return false;
+		}
+		const prev =
+			this.plugin.settings.deckTemplateStyles[oldId] ??
+			defaultStyleFor(oldId);
+		this.plugin.settings.deckTemplateStyles[name] = { ...prev };
+		delete this.plugin.settings.deckTemplateStyles[oldId];
+		this.plugin.settings.customDeckTemplates =
+			this.plugin.settings.customDeckTemplates.map((x) =>
+				x === oldId ? name : x,
+			);
+		this.plugin.settings.deckTemplateOrder =
+			this.plugin.settings.deckTemplateOrder.map((x) =>
+				x === oldId ? name : x,
+			);
+		this.plugin.settings.deckTemplateOrder = normalizeDeckTemplateOrder(
+			this.plugin.settings.deckTemplateOrder,
+			this.plugin.settings.customDeckTemplates,
+		);
+		if (this.plugin.settings.deckTemplate === oldId) {
+			this.plugin.settings.deckTemplate = name;
+		}
+		if (this.editingTemplateId === oldId) {
+			this.editingTemplateId = name;
+		}
+		await this.plugin.saveSettings();
+		new Notice(`已重命名为「${name}」`);
+		this.display();
+		return true;
 	}
 
 	private renderCustomFieldSettings(containerEl: HTMLElement): void {
 		const section = this.beginSection(
 			containerEl,
-			'自定义字段',
-			'控制写入 Anki 的标签、回链与牌组树字段。',
+			'字段设置',
+			'写入 Anki 的 tags / backlink / tree 字段。',
 		);
 
 		new Setting(section)

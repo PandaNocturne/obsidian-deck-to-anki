@@ -16,7 +16,7 @@ import {
 import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
-	allDeckTemplateIds,
+	allDeckTemplateIdsOrdered,
 	FIELD_BACK,
 	FIELD_BACKLINK,
 	FIELD_FRONT,
@@ -312,7 +312,7 @@ async function scanAnkiNotesInDecks(
 	noteDeckHint: Map<number, string>;
 }> {
 	const models =
-		modelNames.length > 0 ? modelNames : allDeckTemplateIds([]);
+		modelNames.length > 0 ? modelNames : allDeckTemplateIdsOrdered({});
 	const sorted = [...deckPaths]
 		.map((p) => toAnkiDeckName(p))
 		.filter(Boolean)
@@ -732,7 +732,7 @@ export async function prefetchSyncStatusForCards(
 				}),
 		),
 	];
-	const modelNames = allDeckTemplateIds(settings.customDeckTemplates);
+	const modelNames = allDeckTemplateIdsOrdered(settings);
 	const scanSteps = root
 		? Math.max(1, deckPaths.length * modelNames.length)
 		: 0;
@@ -852,7 +852,7 @@ export async function prefetchSyncStatus(
 	const sortedDeckPaths = [...deckPaths].sort(
 		(a, b) => b.split('::').length - a.split('::').length,
 	);
-	const modelNames = allDeckTemplateIds(settings.customDeckTemplates);
+	const modelNames = allDeckTemplateIdsOrdered(settings);
 	const scanSteps = sortedDeckPaths.length * modelNames.length;
 	const fetchSteps = Math.max(1, Math.ceil(localIds.size / 50) || 1);
 	// Orphan fetch unknown yet; reserve a soft tail of 1 then expand.

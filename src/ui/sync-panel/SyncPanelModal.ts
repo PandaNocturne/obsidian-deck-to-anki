@@ -14,7 +14,7 @@ import { resolveNumberingOptions } from '../../anki/numbering';
 import type DeckToAnkiPlugin from '../../../main';
 import { AnkiConnectClient } from '../../anki/AnkiConnectClient';
 import {
-	allDeckTemplateIds,
+	allDeckTemplateIdsOrdered,
 	type DeckTemplateId,
 } from '../../anki/templates';
 import { syncCardListToAnki, syncNodesToAnki } from '../../anki/syncCard';
@@ -61,9 +61,12 @@ interface SessionDeckSettings {
 function asDeckTemplateId(
 	value: string | undefined,
 	fallback: DeckTemplateId,
-	customIds?: string[] | null,
+	settings: {
+		deckTemplateOrder?: string[] | null;
+		customDeckTemplates?: string[] | null;
+	},
 ): DeckTemplateId {
-	const known = allDeckTemplateIds(customIds);
+	const known = allDeckTemplateIdsOrdered(settings);
 	if (value && known.includes(value)) {
 		return value;
 	}
@@ -1266,7 +1269,7 @@ export class SyncPanelUI {
 		let deckTemplate = asDeckTemplateId(
 			noteParsed?.yamlDeckTemplate,
 			fallbackTemplate,
-			this.plugin.settings.customDeckTemplates,
+			this.plugin.settings,
 		);
 		let deckNumbering = defaultNumbering.deckNumbering;
 
@@ -1286,7 +1289,7 @@ export class SyncPanelUI {
 				deckTemplate = asDeckTemplateId(
 					this.parsed.yamlDeckTemplate,
 					fallbackTemplate,
-					this.plugin.settings.customDeckTemplates,
+					this.plugin.settings,
 				);
 				const n = resolveNumberingOptions(
 					{
@@ -1315,7 +1318,7 @@ export class SyncPanelUI {
 				deckTemplate = asDeckTemplateId(
 					meta.deckTemplate,
 					fallbackTemplate,
-					this.plugin.settings.customDeckTemplates,
+					this.plugin.settings,
 				);
 				const n = resolveNumberingOptions(meta, this.plugin.settings);
 				deckNumbering = n.deckNumbering;

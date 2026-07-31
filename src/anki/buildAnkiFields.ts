@@ -24,7 +24,7 @@ import {
 } from './processMedia';
 import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
-	allDeckTemplateIds,
+	allDeckTemplateIdsOrdered,
 	FIELD_BACK,
 	FIELD_BACKLINK,
 	FIELD_FRONT,
@@ -64,7 +64,7 @@ function resolveDeckTemplate(
 	yaml: string | undefined,
 	settings: DeckToAnkiSettings,
 ): DeckTemplateId {
-	const known = allDeckTemplateIds(settings.customDeckTemplates);
+	const known = allDeckTemplateIdsOrdered(settings);
 	if (yaml && known.includes(yaml)) {
 		return yaml;
 	}
