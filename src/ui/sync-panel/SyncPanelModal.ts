@@ -163,7 +163,8 @@ export class SyncPanelUI {
 	private checkBtnEl!: HTMLButtonElement;
 	private refreshBtnEl!: HTMLButtonElement;
 	private selectAllBtnEl!: HTMLButtonElement;
-	private expandToggleBtnEl!: HTMLButtonElement;
+	private expandBtnEl!: HTMLButtonElement;
+	private collapseBtnEl!: HTMLButtonElement;
 	private updateBtnEl!: HTMLButtonElement;
 	private forceBtnEl!: HTMLButtonElement;
 	private progressEl!: HTMLElement;
@@ -282,31 +283,42 @@ export class SyncPanelUI {
 			this.refreshToolbarToggleIcons();
 		});
 
-		const expandToggleBtn = toolbar.createEl('button', {
+		const expandBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: { 'aria-label': '全部展开', title: '全部展开' },
 		});
-		this.expandToggleBtnEl = expandToggleBtn;
-		setIcon(expandToggleBtn, 'unfold-vertical');
-		expandToggleBtn.addEventListener('click', () => {
+		this.expandBtnEl = expandBtn;
+		setIcon(expandBtn, 'chevrons-down');
+		expandBtn.addEventListener('click', () => {
 			if (this.busy) {
 				return;
 			}
-			if (this.state.areAllExpanded()) {
-				this.state.collapseAll();
-			} else {
-				this.state.expandAll();
+			this.state.expandAll();
+			this.renderBody();
+			this.refreshToolbarToggleIcons();
+		});
+
+		const collapseBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '全部折叠', title: '全部折叠' },
+		});
+		this.collapseBtnEl = collapseBtn;
+		setIcon(collapseBtn, 'chevrons-up');
+		collapseBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
 			}
+			this.state.collapseAll();
 			this.renderBody();
 			this.refreshToolbarToggleIcons();
 		});
 
 		const refreshBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '刷新', title: '重新解析' },
+			attr: { 'aria-label': '扫描', title: '重新解析' },
 		});
 		this.refreshBtnEl = refreshBtn;
-		setIcon(refreshBtn, 'refresh-cw');
+		setIcon(refreshBtn, 'scan-text');
 		refreshBtn.addEventListener('click', () => {
 			void this.handleRefresh();
 		});
@@ -314,12 +326,12 @@ export class SyncPanelUI {
 		const checkBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: {
-				'aria-label': '检查',
+				'aria-label': '检测',
 				title: '对照 Anki 检测勾选卡片的同步状态',
 			},
 		});
 		this.checkBtnEl = checkBtn;
-		setIcon(checkBtn, 'info');
+		setIcon(checkBtn, 'refresh-cw');
 		checkBtn.addEventListener('click', () => {
 			void this.handleCheckStatus();
 		});
@@ -451,7 +463,8 @@ export class SyncPanelUI {
 			this.checkBtnEl,
 			this.refreshBtnEl,
 			this.selectAllBtnEl,
-			this.expandToggleBtnEl,
+			this.expandBtnEl,
+			this.collapseBtnEl,
 			this.updateBtnEl,
 			this.forceBtnEl,
 			this.allTabEl,
@@ -467,7 +480,7 @@ export class SyncPanelUI {
 		this.checkBtnEl.toggleClass('is-loading', this.busy === 'check');
 		setIcon(
 			this.checkBtnEl,
-			this.busy === 'check' ? 'loader-circle' : 'info',
+			this.busy === 'check' ? 'loader-circle' : 'refresh-cw',
 		);
 		this.checkBtnEl.title =
 			this.busy === 'check'
@@ -477,10 +490,10 @@ export class SyncPanelUI {
 		this.refreshBtnEl.toggleClass('is-loading', this.busy === 'reload');
 		setIcon(
 			this.refreshBtnEl,
-			this.busy === 'reload' ? 'loader-circle' : 'refresh-cw',
+			this.busy === 'reload' ? 'loader-circle' : 'scan-text',
 		);
 		this.refreshBtnEl.title =
-			this.busy === 'reload' ? '刷新中…' : '重新解析';
+			this.busy === 'reload' ? '扫描中…' : '重新解析';
 
 		if (!busy) {
 			this.refreshToolbarToggleIcons();
@@ -510,7 +523,7 @@ export class SyncPanelUI {
 	}
 
 	private refreshToolbarToggleIcons(): void {
-		if (!this.selectAllBtnEl || !this.expandToggleBtnEl) {
+		if (!this.selectAllBtnEl) {
 			return;
 		}
 		const allSelected = this.state.areAllLeavesSelected();
@@ -520,17 +533,6 @@ export class SyncPanelUI {
 			allSelected ? '取消全选' : '全选',
 		);
 		this.selectAllBtnEl.title = allSelected ? '取消全选' : '全选';
-
-		const allExpanded = this.state.areAllExpanded();
-		setIcon(
-			this.expandToggleBtnEl,
-			allExpanded ? 'fold-vertical' : 'unfold-vertical',
-		);
-		this.expandToggleBtnEl.setAttribute(
-			'aria-label',
-			allExpanded ? '全部折叠' : '全部展开',
-		);
-		this.expandToggleBtnEl.title = allExpanded ? '全部折叠' : '全部展开';
 	}
 
 	/** Soft-warn the check button until Anki status has been checked. */
