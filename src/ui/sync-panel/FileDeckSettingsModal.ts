@@ -1,8 +1,8 @@
 import { Modal, Notice, Setting, TFile } from 'obsidian';
 import type DeckToAnkiPlugin from '../../../main';
 import {
-	DECK_TEMPLATE_IDS,
-	DECK_TEMPLATE_LABELS,
+	allDeckTemplateIds,
+	deckTemplateLabel,
 	type DeckTemplateId,
 } from '../../anki/templates';
 import {
@@ -47,6 +47,7 @@ const DECK_TYPE_LABELS: Record<DeckSettingsType, string> = {
 };
 
 export class FileDeckSettingsModal extends Modal {
+	private readonly plugin: DeckToAnkiPlugin;
 	private readonly file: TFile;
 	private readonly onDone: (
 		values: FileDeckSettingsValues,
@@ -68,6 +69,7 @@ export class FileDeckSettingsModal extends Modal {
 		options?: FileDeckSettingsOptions,
 	) {
 		super(plugin.app);
+		this.plugin = plugin;
 		this.file = file;
 		this.onDone = onDone;
 		const types = options?.allowedDeckTypes ?? DEFAULT_DECK_TYPES;
@@ -77,7 +79,10 @@ export class FileDeckSettingsModal extends Modal {
 		if (!this.allowedDeckTypes.includes(this.draft.deckType)) {
 			this.draft.deckType = types[0] ?? 'head';
 		}
-		if (!DECK_TEMPLATE_IDS.includes(this.draft.deckTemplate)) {
+		const known = allDeckTemplateIds(
+			this.plugin.settings.customDeckTemplates,
+		);
+		if (!known.includes(this.draft.deckTemplate)) {
 			this.draft.deckTemplate = 'ob-deck-basic';
 		}
 	}
@@ -177,8 +182,10 @@ export class FileDeckSettingsModal extends Modal {
 					'YAML: deckTemplate — 同步到 Anki 时使用的笔记类型',
 				)
 				.addDropdown((dropdown) => {
-					for (const id of DECK_TEMPLATE_IDS) {
-						dropdown.addOption(id, DECK_TEMPLATE_LABELS[id]);
+					for (const id of allDeckTemplateIds(
+						this.plugin.settings.customDeckTemplates,
+					)) {
+						dropdown.addOption(id, deckTemplateLabel(id));
 					}
 					dropdown
 						.setValue(this.draft.deckTemplate)

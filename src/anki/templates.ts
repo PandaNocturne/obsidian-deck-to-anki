@@ -1,15 +1,55 @@
-/** Built-in Anki note type ids for this plugin. */
-export type DeckTemplateId = 'ob-deck-basic' | 'ob-deck-basic++';
+/** Anki note type id (built-in or user-defined). */
+export type DeckTemplateId = string;
 
-export const DECK_TEMPLATE_IDS: DeckTemplateId[] = [
+export type BuiltInDeckTemplateId = 'ob-deck-basic' | 'ob-deck-basic++';
+
+export const BUILT_IN_DECK_TEMPLATE_IDS: BuiltInDeckTemplateId[] = [
 	'ob-deck-basic',
 	'ob-deck-basic++',
 ];
 
-export const DECK_TEMPLATE_LABELS: Record<DeckTemplateId, string> = {
-	'ob-deck-basic': 'ob-deck-basic（普通问答）',
-	'ob-deck-basic++': 'ob-deck-basic++（可反转）',
+/** @deprecated Prefer BUILT_IN_DECK_TEMPLATE_IDS + custom list from settings. */
+export const DECK_TEMPLATE_IDS: BuiltInDeckTemplateId[] =
+	BUILT_IN_DECK_TEMPLATE_IDS;
+
+export const BUILT_IN_DECK_TEMPLATE_LABELS: Record<
+	BuiltInDeckTemplateId,
+	string
+> = {
+	'ob-deck-basic': 'ob-deck-basic（单向）',
+	'ob-deck-basic++': 'ob-deck-basic++（可翻转）',
 };
+
+/** @deprecated Prefer deckTemplateLabel(). */
+export const DECK_TEMPLATE_LABELS: Record<BuiltInDeckTemplateId, string> =
+	BUILT_IN_DECK_TEMPLATE_LABELS;
+
+export function isBuiltInDeckTemplate(
+	id: string,
+): id is BuiltInDeckTemplateId {
+	return (BUILT_IN_DECK_TEMPLATE_IDS as string[]).includes(id);
+}
+
+export function allDeckTemplateIds(
+	customIds: string[] | undefined | null,
+): DeckTemplateId[] {
+	const custom = (customIds ?? [])
+		.map((id) => id.trim())
+		.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id));
+	return [...BUILT_IN_DECK_TEMPLATE_IDS, ...custom];
+}
+
+export function deckTemplateLabel(id: string): string {
+	if (isBuiltInDeckTemplate(id)) {
+		return BUILT_IN_DECK_TEMPLATE_LABELS[id];
+	}
+	return id;
+}
+
+/** Sanitize user input into an Anki model name. */
+export function sanitizeDeckTemplateId(raw: string): string {
+	return raw.trim().replace(/\s+/g, ' ');
+}
 
 /**
  * Field names on ob-deck-* models.
@@ -43,6 +83,57 @@ export interface DeckTemplateStyle {
 	back: string;
 	/** Model CSS. */
 	css: string;
+	/** Create reversible Card 2 (like ob-deck-basic++). */
+	reversible?: boolean;
+	/**
+	 * Card interaction kind.
+	 * Currently only `qa` is implemented; others are reserved.
+	 */
+	kind?: DeckCardKind;
+}
+
+/** Template card kinds shown in settings. */
+export type DeckCardKind = 'qa' | 'truefalse' | 'choice' | 'cloze';
+
+export const DECK_CARD_KIND_IDS: DeckCardKind[] = [
+	'qa',
+	'truefalse',
+	'choice',
+	'cloze',
+];
+
+export const DECK_CARD_KIND_LABELS: Record<DeckCardKind, string> = {
+	qa: '问答型',
+	truefalse: '判断型',
+	choice: '选择型',
+	cloze: '填空型',
+};
+
+/** Which kinds are selectable today. */
+export const DECK_CARD_KIND_AVAILABLE: Record<DeckCardKind, boolean> = {
+	qa: true,
+	truefalse: false,
+	choice: false,
+	cloze: false,
+};
+
+export function normalizeDeckCardKind(
+	value: string | undefined | null,
+): DeckCardKind {
+	if (value && (DECK_CARD_KIND_IDS as string[]).includes(value)) {
+		return value as DeckCardKind;
+	}
+	return 'qa';
+}
+
+export function isReversibleDeckTemplate(
+	id: string,
+	style?: DeckTemplateStyle | null,
+): boolean {
+	if (id === 'ob-deck-basic++') {
+		return true;
+	}
+	return style?.reversible === true;
 }
 
 export const DEFAULT_CARD_CSS = `.card {
@@ -293,16 +384,18 @@ export const DEFAULT_CARD_BACK = `<div class="dta-card">
 </div>
 `;
 
-export function defaultStyleFor(_id: DeckTemplateId): DeckTemplateStyle {
+export function defaultStyleFor(id: DeckTemplateId): DeckTemplateStyle {
 	return {
 		front: DEFAULT_CARD_FRONT,
 		back: DEFAULT_CARD_BACK,
 		css: DEFAULT_CARD_CSS,
+		reversible: id === 'ob-deck-basic++',
+		kind: 'qa',
 	};
 }
 
 export function createDefaultDeckTemplateStyles(): Record<
-	DeckTemplateId,
+	string,
 	DeckTemplateStyle
 > {
 	return {

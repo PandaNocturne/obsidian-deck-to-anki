@@ -24,7 +24,7 @@ import {
 } from './processMedia';
 import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
-	DECK_TEMPLATE_IDS,
+	allDeckTemplateIds,
 	FIELD_BACK,
 	FIELD_BACKLINK,
 	FIELD_FRONT,
@@ -62,12 +62,16 @@ export interface AnkiNoteFieldPayload {
 
 function resolveDeckTemplate(
 	yaml: string | undefined,
-	fallback: DeckTemplateId,
+	settings: DeckToAnkiSettings,
 ): DeckTemplateId {
-	if (yaml && DECK_TEMPLATE_IDS.includes(yaml as DeckTemplateId)) {
-		return yaml as DeckTemplateId;
+	const known = allDeckTemplateIds(settings.customDeckTemplates);
+	if (yaml && known.includes(yaml)) {
+		return yaml;
 	}
-	return fallback;
+	if (known.includes(settings.deckTemplate)) {
+		return settings.deckTemplate;
+	}
+	return 'ob-deck-basic';
 }
 
 /**
@@ -120,10 +124,7 @@ export async function buildAnkiNoteFieldPayload(
 		? await app.vault.read(file)
 		: await app.vault.cachedRead(file);
 	const meta = parseFrontmatter(noteContent);
-	const modelName = resolveDeckTemplate(
-		meta.deckTemplate,
-		settings.deckTemplate,
-	);
+	const modelName = resolveDeckTemplate(meta.deckTemplate, settings);
 	const numbering = resolveNumberingOptions(meta, settings);
 	const deckName = toAnkiDeckNameForCard(card, numbering.deckNumbering);
 

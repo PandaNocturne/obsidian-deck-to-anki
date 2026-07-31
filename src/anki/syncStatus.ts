@@ -16,7 +16,7 @@ import {
 import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
-	DECK_TEMPLATE_IDS,
+	allDeckTemplateIds,
 	FIELD_BACK,
 	FIELD_BACKLINK,
 	FIELD_FRONT,
@@ -304,12 +304,15 @@ function recountLocalCards(node: DeckNode): number {
 async function scanAnkiNotesInDecks(
 	client: AnkiConnectClient,
 	deckPaths: string[],
+	modelNames: string[],
 	onProgress?: SyncStatusProgressHandler,
 	progress?: { offset: number; total: number },
 ): Promise<{
 	ankiIds: Set<number>;
 	noteDeckHint: Map<number, string>;
 }> {
+	const models =
+		modelNames.length > 0 ? modelNames : allDeckTemplateIds([]);
 	const sorted = [...deckPaths]
 		.map((p) => toAnkiDeckName(p))
 		.filter(Boolean)
@@ -317,13 +320,13 @@ async function scanAnkiNotesInDecks(
 
 	const ankiIds = new Set<number>();
 	const noteDeckHint = new Map<number, string>();
-	const scanSteps = Math.max(1, sorted.length * DECK_TEMPLATE_IDS.length);
+	const scanSteps = Math.max(1, sorted.length * models.length);
 	let scanDone = 0;
 	const offset = progress?.offset ?? 0;
 	const total = progress?.total ?? scanSteps;
 
 	for (const deckPath of sorted) {
-		for (const model of DECK_TEMPLATE_IDS) {
+		for (const model of models) {
 			const query = `deck:"${escapeAnkiQueryValue(deckPath)}" note:"${escapeAnkiQueryValue(model)}"`;
 			const ids = await client.findNotes(query);
 			for (const id of ids) {
@@ -729,8 +732,9 @@ export async function prefetchSyncStatusForCards(
 				}),
 		),
 	];
+	const modelNames = allDeckTemplateIds(settings.customDeckTemplates);
 	const scanSteps = root
-		? Math.max(1, deckPaths.length * DECK_TEMPLATE_IDS.length)
+		? Math.max(1, deckPaths.length * modelNames.length)
 		: 0;
 	const fetchSteps = Math.max(
 		1,
@@ -783,6 +787,7 @@ export async function prefetchSyncStatusForCards(
 		const { ankiIds, noteDeckHint } = await scanAnkiNotesInDecks(
 			client,
 			deckPaths,
+			modelNames,
 			onProgress,
 			{ offset: step, total },
 		);
@@ -847,7 +852,8 @@ export async function prefetchSyncStatus(
 	const sortedDeckPaths = [...deckPaths].sort(
 		(a, b) => b.split('::').length - a.split('::').length,
 	);
-	const scanSteps = sortedDeckPaths.length * DECK_TEMPLATE_IDS.length;
+	const modelNames = allDeckTemplateIds(settings.customDeckTemplates);
+	const scanSteps = sortedDeckPaths.length * modelNames.length;
 	const fetchSteps = Math.max(1, Math.ceil(localIds.size / 50) || 1);
 	// Orphan fetch unknown yet; reserve a soft tail of 1 then expand.
 	let total = 1 + fetchSteps + scanSteps + localCards.length + 1;
@@ -880,6 +886,7 @@ export async function prefetchSyncStatus(
 	const { ankiIds: ankiIdsInView, noteDeckHint } = await scanAnkiNotesInDecks(
 		client,
 		sortedDeckPaths,
+		modelNames,
 		onProgress,
 		{ offset: step, total },
 	);

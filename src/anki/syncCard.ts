@@ -9,7 +9,8 @@ import { cleanupEmptyAnkiDecks } from './cleanupEmptyDecks';
 import { ensureDeckTemplateModel } from './ensureModel';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
-	DECK_TEMPLATE_IDS,
+	allDeckTemplateIds,
+	defaultStyleFor,
 	FIELD_FRONT,
 	type DeckTemplateId,
 } from './templates';
@@ -68,12 +69,16 @@ function createClient(settings: DeckToAnkiSettings): AnkiConnectClient {
 
 function resolveDeckTemplate(
 	yamlValue: string | undefined,
-	fallback: DeckTemplateId,
+	settings: DeckToAnkiSettings,
 ): DeckTemplateId {
-	if (yamlValue && DECK_TEMPLATE_IDS.includes(yamlValue as DeckTemplateId)) {
-		return yamlValue as DeckTemplateId;
+	const known = allDeckTemplateIds(settings.customDeckTemplates);
+	if (yamlValue && known.includes(yamlValue)) {
+		return yamlValue;
 	}
-	return fallback;
+	if (known.includes(settings.deckTemplate)) {
+		return settings.deckTemplate;
+	}
+	return 'ob-deck-basic';
 }
 
 function escapeAnkiQueryValue(value: string): string {
@@ -218,7 +223,7 @@ export async function pushDeckTemplateStylesIfNeeded(
 		return false;
 	}
 
-	for (const id of DECK_TEMPLATE_IDS) {
+	for (const id of allDeckTemplateIds(settings.customDeckTemplates)) {
 		const style = settings.deckTemplateStyles[id];
 		if (!style) {
 			continue;
@@ -254,13 +259,10 @@ export async function syncCardToAnki(
 
 	const noteContent = await app.vault.read(file);
 	const meta = parseFrontmatter(noteContent);
-	const templateId = resolveDeckTemplate(
-		meta.deckTemplate,
-		settings.deckTemplate,
-	);
+	const templateId = resolveDeckTemplate(meta.deckTemplate, settings);
 	const style =
 		settings.deckTemplateStyles[templateId] ??
-		settings.deckTemplateStyles['ob-deck-basic'];
+		defaultStyleFor(templateId);
 
 	let stylePushed = false;
 	if (!options?.skipStylePush) {
@@ -439,7 +441,7 @@ export async function forceUpdateDeckTemplate(
 ): Promise<'created' | 'updated' | 'exists'> {
 	const client = createClient(settings);
 	let last: 'created' | 'updated' | 'exists' = 'exists';
-	for (const id of DECK_TEMPLATE_IDS) {
+	for (const id of allDeckTemplateIds(settings.customDeckTemplates)) {
 		const style = settings.deckTemplateStyles[id];
 		if (!style) {
 			continue;

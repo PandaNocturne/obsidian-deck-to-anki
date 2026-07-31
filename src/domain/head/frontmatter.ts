@@ -1,7 +1,4 @@
-import {
-	DECK_TEMPLATE_IDS,
-	type DeckTemplateId,
-} from '../../anki/templates';
+import type { DeckTemplateId } from '../../anki/templates';
 import type { DeckType } from './types';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
@@ -175,10 +172,9 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 				warnings.push(`无效 deckFile: ${value}`);
 			}
 		} else if (key === 'deckTemplate') {
-			if (DECK_TEMPLATE_IDS.includes(value as DeckTemplateId)) {
-				deckTemplate = value as DeckTemplateId;
-			} else if (value) {
-				warnings.push(`未知 deckTemplate: ${value}`);
+			const name = value.trim();
+			if (name) {
+				deckTemplate = name;
 			}
 		} else if (key === 'deckNumbering') {
 			const parsed = parseBoolean(value);

@@ -4,6 +4,7 @@ import {
 	FIELD_FRONT,
 	FIELD_TREE,
 	MODEL_FIELDS,
+	isReversibleDeckTemplate,
 	swapFrontBackFields,
 	type DeckTemplateId,
 	type DeckTemplateStyle,
@@ -21,7 +22,7 @@ function buildCardTemplates(
 	templateId: DeckTemplateId,
 	style: DeckTemplateStyle,
 ): Array<{ Name: string; Front: string; Back: string }> {
-	if (templateId === 'ob-deck-basic++') {
+	if (isReversibleDeckTemplate(templateId, style)) {
 		return [
 			{
 				Name: 'Card 1',
@@ -130,7 +131,7 @@ export async function ensureDeckTemplateModel(
 
 	if (liveNames.length === 0) {
 		templatesMap['Card 1'] = { Front: style.front, Back: style.back };
-		if (templateId === 'ob-deck-basic++') {
+		if (isReversibleDeckTemplate(templateId, style)) {
 			templatesMap['Card 2'] = {
 				Front: swapFrontBackFields(style.front),
 				Back: swapFrontBackFields(style.back),
@@ -139,8 +140,9 @@ export async function ensureDeckTemplateModel(
 	} else {
 		const primary = liveNames[0]!;
 		templatesMap[primary] = { Front: style.front, Back: style.back };
-		if (templateId === 'ob-deck-basic++' && liveNames[1]) {
-			templatesMap[liveNames[1]] = {
+		if (isReversibleDeckTemplate(templateId, style)) {
+			const second = liveNames[1] ?? 'Card 2';
+			templatesMap[second] = {
 				Front: swapFrontBackFields(style.front),
 				Back: swapFrontBackFields(style.back),
 			};
