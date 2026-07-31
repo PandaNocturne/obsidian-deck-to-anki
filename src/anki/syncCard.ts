@@ -1,37 +1,19 @@
 import type { App } from 'obsidian';
-import {
-	mediaProcessOptionsFromSettings,
-	type DeckToAnkiSettings,
-} from '../settings';
-import type { MediaCompressCache } from './mediaCompressCache';
-import type { MediaProcessOptions } from './processMedia';
+import type { DeckToAnkiSettings } from '../settings';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode, DeckNode } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
-import {
-	buildDeckBacklinkHtml,
-	buildDeckSegmentUris,
-	resolveSourceFile,
-	toAnkiDeckName,
-} from './backlink';
+import { resolveSourceFile, toAnkiDeckName } from './backlink';
+import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import { cleanupEmptyAnkiDecks } from './cleanupEmptyDecks';
 import { ensureDeckTemplateModel } from './ensureModel';
-import { resolveNumberingOptions } from './numbering';
-import { dedupeMediaAssets } from './processMedia';
-import { renderFieldWithMedia, toAnkiTags } from './renderFields';
+import type { MediaCompressCache } from './mediaCompressCache';
 import {
 	DECK_TEMPLATE_IDS,
-	FIELD_BACK,
-	FIELD_BACKLINK,
 	FIELD_FRONT,
-	FIELD_TAGS,
 	type DeckTemplateId,
 } from './templates';
 import { writeCardIdMarker } from './writeIdMarker';
-import {
-	formatCardNumberPrefix,
-	numberBacklinkSegmentNames,
-} from '../domain/head/siblingIndex';
 
 export interface SyncCardResult {
 	noteId: number;
@@ -287,67 +269,20 @@ export async function syncCardToAnki(
 	}
 	await client.createDeck(deckName);
 
-	const mediaOpts = mediaProcessOptionsFromSettings(
-		settings,
-		options?.mediaCache,
-	);
-	const [front, back] = await Promise.all([
-		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
-		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
-	]);
-	const media = dedupeMediaAssets([...front.assets, ...back.assets]);
-	if (media.length > 0) {
-		await client.storeMediaFiles(media);
+	const payload = await buildAnkiNoteFieldPayload(app, settings, card, {
+		mediaCache: options?.mediaCache,
+		freshNoteContent: true,
+	});
+	if (payload.assets.length > 0) {
+		await client.storeMediaFiles(payload.assets);
 	}
-
-	const numbering = resolveNumberingOptions(meta, settings);
-	const numberPrefix = formatCardNumberPrefix(card, numbering);
-
-	let deckBacklinkHtml = '';
-	let warning: string | undefined;
-	if (settings.deckBacklinkEnabled) {
-		const link = await buildDeckSegmentUris({
-			app,
-			card,
-			scheme: settings.backlinkScheme,
-			uidProperty: settings.advUriUidProperty || 'uid',
-			noteContent,
-		});
-		warning = link.warning;
-		const numbered = numberBacklinkSegmentNames(
-			link.segments.map((s) => s.name),
-			card.deckIndexPath,
-			numbering.deckNumbering,
-		);
-		deckBacklinkHtml = buildDeckBacklinkHtml(
-			link.segments.map((seg, i) => ({
-				...seg,
-				name: numbered[i] ?? seg.name,
-			})),
-		);
-	}
-
-	const tags = settings.deckTagsEnabled
-		? toAnkiTags(card.tags ?? [])
-		: [];
-	const tagsHtml =
-		tags.length > 0
-			? tags.map((tag) => `#${tag}`).join(' · ')
-			: '';
-
-	const fields: Record<string, string> = {
-		[FIELD_FRONT]: `${numberPrefix}${front.html}`,
-		[FIELD_BACK]: back.html,
-		[FIELD_BACKLINK]: deckBacklinkHtml,
-		[FIELD_TAGS]: tagsHtml,
-	};
 
 	const upserted = await upsertAnkiNote(client, {
 		noteId: card.noteId,
 		deckName,
 		modelName: templateId,
-		fields,
-		tags,
+		fields: payload.fields,
+		tags: payload.tags,
 		deckTagsEnabled: settings.deckTagsEnabled,
 	});
 
@@ -365,7 +300,7 @@ export async function syncCardToAnki(
 		created: upserted.created,
 		deckName,
 		modelName: templateId,
-		warning,
+		warning: payload.warning,
 		stylePushed,
 	};
 }

@@ -18,7 +18,7 @@ import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
 /** Bump when shipping new built-in card Front/Back/CSS. */
-export const DECK_TEMPLATE_STYLE_VERSION = 6;
+export const DECK_TEMPLATE_STYLE_VERSION = 7;
 
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
@@ -27,6 +27,7 @@ export interface DeckToAnkiSettings {
 	/**
 	 * Head mode with --- separator: when true, card front includes the heading text.
 	 * Default false — front is only the body above ---.
+	 * Anki always stores title in ob-deck-head separately from ob-deck-front.
 	 */
 	headIncludeTitleInFront: boolean;
 	/** Default Deck View mode: source (raw) or reading (rendered). */
@@ -44,11 +45,15 @@ export interface DeckToAnkiSettings {
 	 * When behind deckTemplateStyleVersion, next sync force-updates templates.
 	 */
 	ankiTemplateSyncedVersion: number;
-	/** Sync Obsidian tags → Anki note tags. */
+	/** Write ob-deck-tags from parsed Obsidian tags. */
 	deckTagsEnabled: boolean;
-	/** Write DeckBacklink field (per-deck crumbs: 一级 > 牌组2 > …). */
-	deckBacklinkEnabled: boolean;
-	/** URI scheme for DeckBacklink. */
+	/** Write ob-deck-tree (deck crumbs). */
+	deckTreeEnabled: boolean;
+	/** When tree is on: crumbs are clickable links (uses backlinkScheme). */
+	deckTreeLinkEnabled: boolean;
+	/** Write ob-deck-backlink (open current card in Obsidian). */
+	deckCardBacklinkEnabled: boolean;
+	/** URI scheme for card backlink and tree links. */
 	backlinkScheme: BacklinkScheme;
 	/** Frontmatter property for Advanced URI uid. */
 	advUriUidProperty: string;
@@ -89,7 +94,9 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	deckTemplateStyleVersion: DECK_TEMPLATE_STYLE_VERSION,
 	ankiTemplateSyncedVersion: 0,
 	deckTagsEnabled: true,
-	deckBacklinkEnabled: true,
+	deckTreeEnabled: true,
+	deckTreeLinkEnabled: true,
+	deckCardBacklinkEnabled: true,
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
@@ -140,6 +147,28 @@ export function mergeSettings(
 		? Math.min(100, Math.max(1, Math.round(q)))
 		: DEFAULT_SETTINGS.mediaCompressQuality;
 
+	// Migrate legacy deckBacklinkEnabled → deckTreeEnabled.
+	const legacy = partial as
+		| (Partial<DeckToAnkiSettings> & { deckBacklinkEnabled?: boolean })
+		| null
+		| undefined;
+	if (
+		legacy &&
+		legacy.deckTreeEnabled === undefined &&
+		typeof legacy.deckBacklinkEnabled === 'boolean'
+	) {
+		base.deckTreeEnabled = legacy.deckBacklinkEnabled;
+	}
+	if (typeof base.deckTreeEnabled !== 'boolean') {
+		base.deckTreeEnabled = DEFAULT_SETTINGS.deckTreeEnabled;
+	}
+	if (typeof base.deckTreeLinkEnabled !== 'boolean') {
+		base.deckTreeLinkEnabled = DEFAULT_SETTINGS.deckTreeLinkEnabled;
+	}
+	if (typeof base.deckCardBacklinkEnabled !== 'boolean') {
+		base.deckCardBacklinkEnabled = DEFAULT_SETTINGS.deckCardBacklinkEnabled;
+	}
+
 	return base;
 }
 
@@ -175,29 +204,53 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		containerEl.addClass('deck-to-anki-settings');
 
 		this.renderParseSettings(containerEl);
-		this.renderAnkiTemplateSettings(containerEl);
+		this.renderSyncSettings(containerEl);
+		this.renderMediaSettings(containerEl);
+		this.renderTemplateSettings(containerEl);
+		this.renderParseFieldSettings(containerEl);
 		this.renderCustomFieldSettings(containerEl);
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',
-			text: 'Notes use camelCase YAML: deckType, deckName, deckLevel, deckStatus, deckTemplate, deckFile.',
+			text: '笔记 YAML（camelCase）：deckType、deckName、deckLevel、deckStatus、deckTemplate、deckFile、deckNumbering、cardNumbering。',
 		});
 	}
 
-	private renderParseSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '解析' });
+	/** Section heading + short blurb, wrapped for visual grouping. */
+	private beginSection(
+		containerEl: HTMLElement,
+		title: string,
+		desc?: string,
+	): HTMLElement {
+		const section = containerEl.createDiv({ cls: 'dta-settings-section' });
+		section.createEl('h3', { text: title, cls: 'dta-settings-section-title' });
+		if (desc) {
+			section.createEl('p', {
+				cls: 'dta-settings-section-desc',
+				text: desc,
+			});
+		}
+		return section;
+	}
 
-		new Setting(containerEl)
-			.setName('Default deck mode')
+	private renderParseSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'解析',
+			'控制笔记如何拆成牌组 / 卡片；可被单篇 YAML 覆盖。',
+		);
+
+		new Setting(section)
+			.setName('默认牌组模式')
 			.setDesc(
-				'Default parse mode in the sync panel. Notes are always parsed from the active file; Update writes deckType to YAML.',
+				'同步面板默认解析模式。笔记始终从当前文件解析；Update 会把 deckType 写入 YAML。',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
-					.addOption('file', 'File (linked-file mode)')
-					.addOption('head', 'Head (heading mode)')
-					.addOption('list', 'List (top-level list mode)')
-					.addOption('card', 'Card (separator mode)')
+					.addOption('file', 'File（链接文件）')
+					.addOption('head', 'Head（标题）')
+					.addOption('list', 'List（顶层列表）')
+					.addOption('card', 'Card（分隔符）')
 					.setValue(this.plugin.settings.defaultDeckType)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultDeckType = value as DeckType;
@@ -205,10 +258,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName('Default heading level')
+		new Setting(section)
+			.setName('默认标题层级')
 			.setDesc(
-				'Default card heading level for head mode when the note has no deckLevel in YAML. Notes can still override via YAML settings.',
+				'Head 模式：笔记无 deckLevel 时，将该层级标题视为卡片正面。',
 			)
 			.addDropdown((dropdown) => {
 				for (let level = 1; level <= 6; level++) {
@@ -222,10 +275,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					});
 			});
 
-		new Setting(containerEl)
-			.setName('Include heading in front')
+		new Setting(section)
+			.setName('正面包含标题')
 			.setDesc(
-				'Head mode: when a card block contains ---, put the heading into the card front as well. Off by default — front is only the text above ---.',
+				'Head 模式且卡片含 --- 时：开启则标题写入正面；关闭则正面仅为 --- 上方正文。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -236,11 +289,9 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
-			.setName('Deck View default')
-			.setDesc(
-				'Default mode when opening Deck View from a card: source (raw markdown) or reading (rendered).',
-			)
+		new Setting(section)
+			.setName('Deck View 默认模式')
+			.setDesc('从卡片打开 Deck View 时：源码或阅读。')
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('source', '源码')
@@ -254,10 +305,14 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private renderAnkiTemplateSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '牌组模板' });
+	private renderSyncSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'同步',
+			'AnkiConnect 连接、自动检测与编号写入。',
+		);
 
-		new Setting(containerEl)
+		new Setting(section)
 			.setName('AnkiConnect URL')
 			.setDesc('Anki 需安装并启用 AnkiConnect。')
 			.addText((text) =>
@@ -271,10 +326,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
+		new Setting(section)
 			.setName('打开当前笔记时自动检测')
 			.setDesc(
-				'解析「当前卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片的同步状态。默认开启。',
+				'解析「当前卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -285,10 +340,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
+		new Setting(section)
 			.setName('同步牌组编号')
 			.setDesc(
-				'将牌组同级序号写入 Anki（正面前缀 / 回链，如 1.2. ）。笔记可用 YAML deckNumbering 覆盖。默认开启。',
+				'将牌组同级序号写入 Anki（正面前缀 / 回链，如 1.2. ）。YAML: deckNumbering。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -299,10 +354,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(containerEl)
+		new Setting(section)
 			.setName('同步卡片编号')
 			.setDesc(
-				'将卡片同级序号写入 Anki 正面（如 3. 或与牌组编号组合为 1.2.3. ）。YAML: cardNumbering。默认关闭。',
+				'将卡片同级序号写入 Anki 正面（如 3. 或 1.2.3. ）。YAML: cardNumbering。默认关闭。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -312,11 +367,19 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
 
-		new Setting(containerEl)
+	private renderMediaSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'媒体',
+			'仅压缩上传到 Anki 的图片，不修改库内源文件。',
+		);
+
+		new Setting(section)
 			.setName('图片压缩')
 			.setDesc(
-				'上传到 Anki 时压缩位图（PNG/JPEG/WebP/BMP → JPEG）。不修改库内源文件。默认开启。',
+				'上传时压缩位图（PNG/JPEG/WebP/BMP → JPEG）。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -328,50 +391,60 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		if (this.plugin.settings.mediaCompressEnabled !== false) {
-			new Setting(containerEl)
-				.setName('压缩质量')
-				.setDesc('JPEG 质量 1–100，默认 75。数值越低体积越小、画质越低。')
-				.addSlider((slider) =>
-					slider
-						.setLimits(1, 100, 1)
-						.setValue(this.plugin.settings.mediaCompressQuality ?? 75)
-						.setDynamicTooltip()
-						.onChange(async (value) => {
-							this.plugin.settings.mediaCompressQuality = value;
-							await this.plugin.saveSettings();
-						}),
-				)
-				.addExtraButton((btn) =>
-					btn
-						.setIcon('reset')
-						.setTooltip('恢复默认 75')
-						.onClick(async () => {
-							this.plugin.settings.mediaCompressQuality = 75;
-							await this.plugin.saveSettings();
-							this.display();
-						}),
-				);
-
-			new Setting(containerEl)
-				.setName('图片压缩缓存')
-				.setDesc(
-					`按文件内容 hash + 质量缓存压缩结果，保证同步与状态对比文件名一致。当前 ${this.plugin.mediaCompressCache.size} 条。`,
-				)
-				.addButton((btn) =>
-					btn.setButtonText('清空缓存').onClick(async () => {
-						this.plugin.mediaCompressCache.clear();
-						await this.plugin.mediaCompressCache.saveNow();
-						new Notice('已清空图片压缩缓存');
-						this.display();
-					}),
-				);
+		if (this.plugin.settings.mediaCompressEnabled === false) {
+			return;
 		}
 
-		new Setting(containerEl)
-			.setName('Default deck template')
+		new Setting(section)
+			.setName('压缩质量')
+			.setDesc('JPEG 质量 1–100，默认 75。越低体积越小、画质越低。')
+			.addSlider((slider) =>
+				slider
+					.setLimits(1, 100, 1)
+					.setValue(this.plugin.settings.mediaCompressQuality ?? 75)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.mediaCompressQuality = value;
+						await this.plugin.saveSettings();
+					}),
+			)
+			.addExtraButton((btn) =>
+				btn
+					.setIcon('reset')
+					.setTooltip('恢复默认 75')
+					.onClick(async () => {
+						this.plugin.settings.mediaCompressQuality = 75;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		new Setting(section)
+			.setName('压缩缓存')
 			.setDesc(
-				'笔记 YAML 无 deckTemplate 时的默认 Anki 笔记类型。可在牌组设置中按笔记覆盖。',
+				`按文件内容 hash + 质量缓存，保证同步与状态对比文件名一致。当前 ${this.plugin.mediaCompressCache.size} 条。`,
+			)
+			.addButton((btn) =>
+				btn.setButtonText('清空缓存').onClick(async () => {
+					this.plugin.mediaCompressCache.clear();
+					await this.plugin.mediaCompressCache.saveNow();
+					new Notice('已清空图片压缩缓存');
+					this.display();
+				}),
+			);
+	}
+
+	private renderTemplateSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'卡片模板',
+			'默认 Anki 笔记类型与 Front / Back / CSS；可强制推送到 Anki。',
+		);
+
+		new Setting(section)
+			.setName('默认笔记类型')
+			.setDesc(
+				'笔记 YAML 无 deckTemplate 时使用。可在牌组设置中按笔记覆盖。',
 			)
 			.addDropdown((dropdown) => {
 				for (const id of DECK_TEMPLATE_IDS) {
@@ -390,14 +463,14 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const templateId = this.plugin.settings.deckTemplate;
 		const style = this.plugin.settings.deckTemplateStyles[templateId];
 
-		containerEl.createEl('h4', {
-			text: `卡片样式 · ${templateId}`,
+		section.createEl('h4', {
+			text: `样式 · ${DECK_TEMPLATE_LABELS[templateId] ?? templateId}`,
 		});
 
 		this.addTemplateTextArea(
-			containerEl,
-			'Front template',
-			'Anki 卡片正面 HTML（可用 {{Front}} {{Back}} {{DeckBacklink}}）',
+			section,
+			'正面模板',
+			'Anki 卡片正面 HTML（可用 {{ob-deck-head}} {{ob-deck-front}} {{ob-deck-back}} {{ob-deck-tags}} {{ob-deck-tree}} {{ob-deck-backlink}}）',
 			style.front,
 			async (value) => {
 				this.plugin.settings.deckTemplateStyles[templateId].front =
@@ -407,8 +480,8 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		);
 
 		this.addTemplateTextArea(
-			containerEl,
-			'Back template',
+			section,
+			'背面模板',
 			'Anki 卡片背面 HTML',
 			style.back,
 			async (value) => {
@@ -419,8 +492,8 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		);
 
 		this.addTemplateTextArea(
-			containerEl,
-			'Card CSS',
+			section,
+			'卡片 CSS',
 			'笔记类型 CSS（仅首次创建或强制更新时同步到 Anki）',
 			style.css,
 			async (value) => {
@@ -431,10 +504,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			12,
 		);
 
-		new Setting(containerEl)
+		new Setting(section)
 			.setName('强制更新模板到 Anki')
 			.setDesc(
-				'将当前 Front / Back / CSS 写入 Anki（覆盖已有笔记类型样式）。更新默认样式后请点一次。',
+				'将当前正面 / 背面 / CSS 写入 Anki（覆盖已有笔记类型样式）。',
 			)
 			.addButton((btn) =>
 				btn
@@ -465,13 +538,22 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private renderCustomFieldSettings(containerEl: HTMLElement): void {
-		containerEl.createEl('h3', { text: '自定义字段' });
+	private renderParseFieldSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'解析字段',
+			'写入 Anki 的解析结果：ob-deck-head / front / back / tags。标题与正文分字段，便于分别设样式。',
+		);
 
-		new Setting(containerEl)
-			.setName('Deck tags')
+		section.createEl('p', {
+			cls: 'dta-settings-section-desc',
+			text: 'ob-deck-head：标题 · ob-deck-front：正面正文（不含标题）· ob-deck-back：背面 · ob-deck-tags：标签',
+		});
+
+		new Setting(section)
+			.setName('同步标签（ob-deck-tags）')
 			.setDesc(
-				'将卡片解析出的 Obsidian Tag 同步为 Anki 笔记标签。默认开启。',
+				'将卡片解析出的 Obsidian Tag 写入字段，并同步为 Anki 笔记标签。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -481,30 +563,75 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+	}
 
-		new Setting(containerEl)
-			.setName('Deck backlink')
+	private renderCustomFieldSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'自定义字段',
+			'ob-deck-backlink：定位当前卡片 · ob-deck-tree：牌组树。',
+		);
+
+		new Setting(section)
+			.setName('卡片回链（ob-deck-backlink）')
 			.setDesc(
-				'写入 ob-deck-backlink 牌组树（一级 > 牌组2 > 子牌组）。关闭则不写入该字段。',
+				'写入定位到当前卡片的链接：Head → 标题，List → 块（^id），Card → 文件。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.deckBacklinkEnabled)
+					.setValue(
+						this.plugin.settings.deckCardBacklinkEnabled !== false,
+					)
 					.onChange(async (value) => {
-						this.plugin.settings.deckBacklinkEnabled = value;
+						this.plugin.settings.deckCardBacklinkEnabled = value;
 						await this.plugin.saveSettings();
 						this.display();
 					}),
 			);
 
-		if (!this.plugin.settings.deckBacklinkEnabled) {
+		new Setting(section)
+			.setName('牌组树（ob-deck-tree）')
+			.setDesc('写入牌组路径 crumbs（一级 > 牌组2 > …）。默认开启。')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckTreeEnabled !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.deckTreeEnabled = value;
+						await this.plugin.saveSettings();
+						this.display();
+					}),
+			);
+
+		if (this.plugin.settings.deckTreeEnabled !== false) {
+			new Setting(section)
+				.setName('牌组树回链')
+				.setDesc(
+					'开启后牌组树各段可点击跳转（使用下方协议）。关闭则仅显示文字。',
+				)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(
+							this.plugin.settings.deckTreeLinkEnabled !== false,
+						)
+						.onChange(async (value) => {
+							this.plugin.settings.deckTreeLinkEnabled = value;
+							await this.plugin.saveSettings();
+						}),
+				);
+		}
+
+		const needScheme =
+			this.plugin.settings.deckCardBacklinkEnabled !== false ||
+			(this.plugin.settings.deckTreeEnabled !== false &&
+				this.plugin.settings.deckTreeLinkEnabled !== false);
+		if (!needScheme) {
 			return;
 		}
 
-		new Setting(containerEl)
-			.setName('Backlink scheme')
+		new Setting(section)
+			.setName('回链协议')
 			.setDesc(
-				'none：只显示牌组树、无跳转；oburi：核心 URI；aduri：Advanced URI（需插件）。',
+				'用于卡片回链与牌组树链接。none：无跳转；oburi：核心 URI；aduri：Advanced URI。',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
@@ -521,10 +648,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 
 		if (this.plugin.settings.backlinkScheme === 'aduri') {
-			new Setting(containerEl)
+			new Setting(section)
 				.setName('Advanced URI uid 属性名')
 				.setDesc(
-					'从笔记 YAML 读取 uid。head/list/card 分别用 heading、block、仅文件定位。',
+					'从笔记 YAML 读取 uid。head/list/card 分别用标题、块、仅文件定位。',
 				)
 				.addText((text) =>
 					text

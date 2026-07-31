@@ -1,9 +1,8 @@
 import type { AnkiConnectClient } from './AnkiConnectClient';
 import {
 	FIELD_BACK,
-	FIELD_BACKLINK,
 	FIELD_FRONT,
-	FIELD_TAGS,
+	FIELD_TREE,
 	MODEL_FIELDS,
 	swapFrontBackFields,
 	type DeckTemplateId,
@@ -14,7 +13,8 @@ import {
 const LEGACY_FIELD_RENAMES: Array<{ from: string; to: string }> = [
 	{ from: 'Front', to: FIELD_FRONT },
 	{ from: 'Back', to: FIELD_BACK },
-	{ from: 'DeckBacklink', to: FIELD_BACKLINK },
+	/** Old DeckBacklink / tree lived in backlink; tree is now ob-deck-tree. */
+	{ from: 'DeckBacklink', to: FIELD_TREE },
 ];
 
 function buildCardTemplates(

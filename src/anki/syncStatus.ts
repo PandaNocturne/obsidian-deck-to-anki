@@ -1,9 +1,5 @@
 import type { App } from 'obsidian';
-import {
-	mediaProcessOptionsFromSettings,
-	type DeckToAnkiSettings,
-} from '../settings';
-import { parseFrontmatter } from '../domain/head/frontmatter';
+import type { DeckToAnkiSettings } from '../settings';
 import type {
 	CardNode,
 	DeletedAnkiCardNode,
@@ -12,28 +8,20 @@ import type {
 	SyncTreeChild,
 } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
-import {
-	buildDeckBacklinkHtml,
-	buildDeckSegmentUris,
-	resolveSourceFile,
-	toAnkiDeckName,
-} from './backlink';
+import { toAnkiDeckName } from './backlink';
+import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import type { MediaCompressCache } from './mediaCompressCache';
-import { resolveNumberingOptions } from './numbering';
-import { renderFieldWithMedia, toAnkiTags } from './renderFields';
 import {
 	DECK_TEMPLATE_IDS,
 	FIELD_BACK,
 	FIELD_BACKLINK,
 	FIELD_FRONT,
+	FIELD_HEAD,
 	FIELD_TAGS,
+	FIELD_TREE,
 	type DeckTemplateId,
 } from './templates';
-import {
-	formatCardNumberPrefix,
-	numberBacklinkSegmentNames,
-	assignSiblingIndexes,
-} from '../domain/head/siblingIndex';
+import { assignSiblingIndexes } from '../domain/head/siblingIndex';
 
 export interface AnkiComparablePayload {
 	deckName: string;
@@ -75,16 +63,6 @@ async function reportProgress(
 		total: Math.max(total, 1),
 		label,
 	});
-}
-
-function resolveDeckTemplate(
-	yamlValue: string | undefined,
-	fallback: DeckTemplateId,
-): DeckTemplateId {
-	if (yamlValue && DECK_TEMPLATE_IDS.includes(yamlValue as DeckTemplateId)) {
-		return yamlValue as DeckTemplateId;
-	}
-	return fallback;
 }
 
 function escapeAnkiQueryValue(value: string): string {
@@ -193,72 +171,14 @@ export async function buildComparablePayload(
 	card: CardNode,
 	mediaCache?: MediaCompressCache | null,
 ): Promise<AnkiComparablePayload> {
-	const filePath = card.sourceFilePath;
-	if (!filePath) {
-		throw new Error('卡片缺少 sourceFilePath');
-	}
-	const file = resolveSourceFile(app, filePath);
-	if (!file) {
-		throw new Error(`找不到源笔记：${filePath}`);
-	}
-
-	const noteContent = await app.vault.cachedRead(file);
-	const meta = parseFrontmatter(noteContent);
-	const modelName = resolveDeckTemplate(
-		meta.deckTemplate,
-		settings.deckTemplate,
-	);
-	const deckName = toAnkiDeckName(card.deckPath);
-
-	const mediaOpts = mediaProcessOptionsFromSettings(settings, mediaCache);
-	const [front, back] = await Promise.all([
-		renderFieldWithMedia(app, card.front, filePath, mediaOpts),
-		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
-	]);
-
-	const numbering = resolveNumberingOptions(meta, settings);
-	const numberPrefix = formatCardNumberPrefix(card, numbering);
-
-	let deckBacklinkHtml = '';
-	if (settings.deckBacklinkEnabled) {
-		const link = await buildDeckSegmentUris({
-			app,
-			card,
-			scheme: settings.backlinkScheme,
-			uidProperty: settings.advUriUidProperty || 'uid',
-			noteContent,
-		});
-		const numbered = numberBacklinkSegmentNames(
-			link.segments.map((s) => s.name),
-			card.deckIndexPath,
-			numbering.deckNumbering,
-		);
-		deckBacklinkHtml = buildDeckBacklinkHtml(
-			link.segments.map((seg, i) => ({
-				...seg,
-				name: numbered[i] ?? seg.name,
-			})),
-		);
-	}
-
-	const tags = settings.deckTagsEnabled
-		? toAnkiTags(card.tags ?? [])
-		: [];
-	const tagsHtml =
-		tags.length > 0
-			? tags.map((tag) => `#${tag}`).join(' · ')
-			: '';
-
+	const payload = await buildAnkiNoteFieldPayload(app, settings, card, {
+		mediaCache,
+	});
 	return {
-		deckName,
-		modelName,
-		fields: {
-			[FIELD_FRONT]: `${numberPrefix}${front.html}`,
-			[FIELD_BACK]: back.html,
-			[FIELD_BACKLINK]: deckBacklinkHtml,
-			[FIELD_TAGS]: tagsHtml,
-		},
-		tags,
+		deckName: payload.deckName,
+		modelName: payload.modelName,
+		fields: payload.fields,
+		tags: payload.tags,
 	};
 }
 
@@ -280,7 +200,14 @@ function payloadsMatch(
 	if (!tagsEqual(local.tags, anki.tags)) {
 		return false;
 	}
-	const keys = [FIELD_FRONT, FIELD_BACK, FIELD_BACKLINK, FIELD_TAGS] as const;
+	const keys = [
+		FIELD_HEAD,
+		FIELD_FRONT,
+		FIELD_BACK,
+		FIELD_TAGS,
+		FIELD_BACKLINK,
+		FIELD_TREE,
+	] as const;
 	for (const key of keys) {
 		if (
 			normalizeFieldHtml(local.fields[key] ?? '') !==
@@ -426,8 +353,9 @@ async function attachDeletedPhantoms(
 	for (const info of orphanInfos) {
 		const deckPath = noteDeckHint.get(info.noteId) ?? root.deckPath;
 		const frontRaw =
-			info.fields[FIELD_FRONT] ??
-			info.fields.Front ??
+			info.fields[FIELD_HEAD] ||
+			info.fields[FIELD_FRONT] ||
+			info.fields.Front ||
 			`Anki #${info.noteId}`;
 		const title =
 			stripHtmlToText(frontRaw).slice(0, 80) || `Anki #${info.noteId}`;

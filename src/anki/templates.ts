@@ -11,20 +11,30 @@ export const DECK_TEMPLATE_LABELS: Record<DeckTemplateId, string> = {
 	'ob-deck-basic++': 'ob-deck-basic++（可反转）',
 };
 
-/** Field names created on ob-deck-* models. */
+/**
+ * Field names on ob-deck-* models.
+ * Parse fields: head / front / back / tags
+ * Custom fields: backlink (card jump) / tree (deck crumbs)
+ */
 export const MODEL_FIELDS = [
+	'ob-deck-head',
 	'ob-deck-front',
 	'ob-deck-back',
-	'ob-deck-backlink',
 	'ob-deck-tags',
+	'ob-deck-backlink',
+	'ob-deck-tree',
 ] as const;
 
 export type ModelFieldName = (typeof MODEL_FIELDS)[number];
 
+export const FIELD_HEAD: ModelFieldName = 'ob-deck-head';
 export const FIELD_FRONT: ModelFieldName = 'ob-deck-front';
 export const FIELD_BACK: ModelFieldName = 'ob-deck-back';
-export const FIELD_BACKLINK: ModelFieldName = 'ob-deck-backlink';
 export const FIELD_TAGS: ModelFieldName = 'ob-deck-tags';
+/** Link that opens the current card in Obsidian. */
+export const FIELD_BACKLINK: ModelFieldName = 'ob-deck-backlink';
+/** Deck tree crumbs (一级 > 牌组2 > …). */
+export const FIELD_TREE: ModelFieldName = 'ob-deck-tree';
 
 export interface DeckTemplateStyle {
 	/** Anki card Front side HTML. */
@@ -64,7 +74,7 @@ export const DEFAULT_CARD_CSS = `.card {
   font-weight: 650;
   letter-spacing: 0.01em;
   color: #0f172a;
-  margin: 0 0 0.85rem;
+  margin: 0 0 0.65rem;
 }
 
 .dta-title > *:first-child {
@@ -72,6 +82,20 @@ export const DEFAULT_CARD_CSS = `.card {
 }
 
 .dta-title > *:last-child {
+  margin-bottom: 0;
+}
+
+.dta-front {
+  text-align: left;
+  color: #334155;
+  margin: 0 0 0.35rem;
+}
+
+.dta-front > *:first-child {
+  margin-top: 0;
+}
+
+.dta-front > *:last-child {
   margin-bottom: 0;
 }
 
@@ -111,9 +135,10 @@ export const DEFAULT_CARD_CSS = `.card {
   word-break: break-word;
 }
 
+.dta-tree,
 .dta-backlink {
   text-align: center;
-  margin: 0.75rem 0 0;
+  margin: 0.55rem 0 0;
   font-size: 0.78em;
   line-height: 1.45;
   color: #64748b;
@@ -129,15 +154,19 @@ export const DEFAULT_CARD_CSS = `.card {
   color: #64748b;
 }
 
+.dta-tree a,
 .dta-backlink a,
-.dta-deck-backlink {
+.dta-deck-backlink,
+.dta-card-backlink {
   color: #64748b;
   text-decoration: none;
   border-bottom: 1px dashed rgba(100, 116, 139, 0.55);
 }
 
+.dta-tree a:hover,
 .dta-backlink a:hover,
-.dta-deck-backlink:hover {
+.dta-deck-backlink:hover,
+.dta-card-backlink:hover {
   color: #4f46e5;
   border-bottom-color: rgba(79, 70, 229, 0.7);
 }
@@ -181,6 +210,7 @@ export const DEFAULT_CARD_CSS = `.card {
   color: #f8fafc;
 }
 
+.nightMode .dta-front,
 .nightMode .dta-answer {
   color: #cbd5e1;
 }
@@ -189,9 +219,12 @@ export const DEFAULT_CARD_CSS = `.card {
   color: #a5b4fc;
 }
 
+.nightMode .dta-tree,
 .nightMode .dta-backlink,
+.nightMode .dta-tree a,
 .nightMode .dta-backlink a,
 .nightMode .dta-deck-backlink,
+.nightMode .dta-card-backlink,
 .nightMode .dta-deck-crumb {
   color: #94a3b8;
 }
@@ -200,8 +233,10 @@ export const DEFAULT_CARD_CSS = `.card {
   color: #64748b;
 }
 
+.nightMode .dta-tree a:hover,
 .nightMode .dta-backlink a:hover,
-.nightMode .dta-deck-backlink:hover {
+.nightMode .dta-deck-backlink:hover,
+.nightMode .dta-card-backlink:hover {
   color: #c7d2fe;
 }
 
@@ -219,10 +254,18 @@ export const DEFAULT_CARD_CSS = `.card {
 }`;
 
 export const DEFAULT_CARD_FRONT = `<div class="dta-card">
-  <div class="dta-title">{{ob-deck-front}}</div>
+  {{#ob-deck-head}}
+  <div class="dta-title">{{ob-deck-head}}</div>
+  {{/ob-deck-head}}
+  {{#ob-deck-front}}
+  <div class="dta-front">{{ob-deck-front}}</div>
+  {{/ob-deck-front}}
   {{#ob-deck-tags}}
   <div class="dta-tags">{{ob-deck-tags}}</div>
   {{/ob-deck-tags}}
+  {{#ob-deck-tree}}
+  <div class="dta-tree">{{ob-deck-tree}}</div>
+  {{/ob-deck-tree}}
   {{#ob-deck-backlink}}
   <div class="dta-backlink">{{ob-deck-backlink}}</div>
   {{/ob-deck-backlink}}
@@ -230,12 +273,20 @@ export const DEFAULT_CARD_FRONT = `<div class="dta-card">
 `;
 
 export const DEFAULT_CARD_BACK = `<div class="dta-card">
-  <div class="dta-title">{{ob-deck-front}}</div>
+  {{#ob-deck-head}}
+  <div class="dta-title">{{ob-deck-head}}</div>
+  {{/ob-deck-head}}
+  {{#ob-deck-front}}
+  <div class="dta-front">{{ob-deck-front}}</div>
+  {{/ob-deck-front}}
   <div class="dta-divider"></div>
   <div class="dta-answer">{{ob-deck-back}}</div>
   {{#ob-deck-tags}}
   <div class="dta-tags">{{ob-deck-tags}}</div>
   {{/ob-deck-tags}}
+  {{#ob-deck-tree}}
+  <div class="dta-tree">{{ob-deck-tree}}</div>
+  {{/ob-deck-tree}}
   {{#ob-deck-backlink}}
   <div class="dta-backlink">{{ob-deck-backlink}}</div>
   {{/ob-deck-backlink}}

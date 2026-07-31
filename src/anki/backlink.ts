@@ -86,25 +86,25 @@ function buildObUri(
 	card: CardNode,
 ): string {
 	const normalized = filePath.replace(/\\/g, '/');
+	const target = cardJumpTarget(card);
 
-	if (card.deckClass === 'list' && card.blockId) {
+	if (target.block) {
 		return `obsidian://open?${buildQuery({
 			vault: vaultName,
-			file: `${normalized}#^${card.blockId}`,
+			file: `${normalized}#^${target.block}`,
 		})}`;
 	}
 
-	if (card.deckClass === 'card') {
+	if (target.heading) {
 		return `obsidian://open?${buildQuery({
 			vault: vaultName,
-			file: normalized,
+			file: `${normalized}#${target.heading}`,
 		})}`;
 	}
 
-	const heading = (card.navTitle ?? card.front).trim();
 	return `obsidian://open?${buildQuery({
 		vault: vaultName,
-		file: heading ? `${normalized}#${heading}` : normalized,
+		file: normalized,
 	})}`;
 }
 
@@ -125,14 +125,52 @@ export function buildDeckSegmentObUri(
 }
 
 /**
- * Advanced URI: open note by uid only (file-level jump).
- * Heading/block anchors temporarily omitted — they break navigation in Anki.
+ * Advanced URI: open by uid, optionally at heading or block.
+ * Card backlink uses heading/block; deck-tree crumbs stay file-level when
+ * heading anchors are unreliable inside Anki.
  */
-function buildAdUri(vaultName: string, uid: string): string {
-	return `obsidian://adv-uri?${buildQuery({
+function buildAdUri(
+	vaultName: string,
+	uid: string,
+	target?: { heading?: string; block?: string },
+): string {
+	const params: Record<string, string> = {
 		vault: vaultName,
 		uid,
-	})}`;
+	};
+	if (target?.block) {
+		params.block = target.block;
+	} else if (target?.heading) {
+		params.heading = target.heading;
+	}
+	return `obsidian://adv-uri?${buildQuery(params)}`;
+}
+
+/** Resolve jump target for the current card: block (list) or heading (head). */
+export function cardJumpTarget(card: CardNode): {
+	heading?: string;
+	block?: string;
+} {
+	if (card.deckClass === 'list' && card.blockId) {
+		return { block: card.blockId };
+	}
+	if (card.deckClass === 'card') {
+		return {};
+	}
+	const heading = (card.navTitle ?? '').trim();
+	return heading ? { heading } : {};
+}
+
+/** Display label for ob-deck-backlink. */
+export function cardBacklinkLabel(card: CardNode): string {
+	const target = cardJumpTarget(card);
+	if (target.block) {
+		return `^${target.block}`;
+	}
+	if (target.heading) {
+		return target.heading;
+	}
+	return '打开笔记';
 }
 
 export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
@@ -143,12 +181,13 @@ export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
 	const { app, card, scheme, uidProperty, noteContent } = options;
 	const vaultName = app.vault.getName();
 	const filePath = card.sourceFilePath ?? '';
+	const jump = cardJumpTarget(card);
 
 	if (scheme === 'aduri') {
 		const uid = readFrontmatterProperty(noteContent, uidProperty);
 		if (uid) {
 			return {
-				uri: buildAdUri(vaultName, uid),
+				uri: buildAdUri(vaultName, uid, jump),
 				schemeUsed: 'aduri',
 			};
 		}
@@ -262,8 +301,18 @@ export async function buildDeckSegmentUris(options: {
 	return { segments, warning };
 }
 
+export function buildCardBacklinkHtml(
+	uri: string,
+	label = '打开笔记',
+): string {
+	if (!uri.trim()) {
+		return '';
+	}
+	return `<a class="dta-card-backlink" href="${uri}">${escapeHtml(label)}</a>`;
+}
+
 /**
- * DeckBacklink field HTML: deck tree crumbs.
+ * Deck tree field HTML: crumbs.
  * With uri → clickable `<a>`; without (scheme none) → plain `<span>`.
  * Avoid MarkdownRenderer — it turns `&` into `&amp;` which breaks
  * custom-protocol clicks inside Anki.
