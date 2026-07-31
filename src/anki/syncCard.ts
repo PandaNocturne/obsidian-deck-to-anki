@@ -13,7 +13,11 @@ import {
 	FIELD_FRONT,
 	type DeckTemplateId,
 } from './templates';
-import { writeCardIdMarker } from './writeIdMarker';
+import {
+	writeCardIdMarker,
+	writePendingIdMarkers,
+	type PendingIdMarkerWrite,
+} from './writeIdMarker';
 
 export interface SyncCardResult {
 	noteId: number;
@@ -22,6 +26,8 @@ export interface SyncCardResult {
 	modelName: string;
 	warning?: string;
 	stylePushed?: boolean;
+	/** When set, caller should batch-write this ID marker after sync. */
+	pendingIdWrite?: PendingIdMarkerWrite;
 }
 
 export interface SyncPersistOptions {
@@ -30,6 +36,11 @@ export interface SyncPersistOptions {
 	forceModelUpdate?: boolean;
 	/** Shared compress cache for stable Anki media names. */
 	mediaCache?: MediaCompressCache;
+	/**
+	 * Defer `<!--ID-->` vault writes; return `pendingIdWrite` instead.
+	 * Batch callers write once after all Anki uploads finish.
+	 */
+	deferIdWrite?: boolean;
 }
 
 export function collectCardsFromNode(
@@ -286,13 +297,18 @@ export async function syncCardToAnki(
 		deckTagsEnabled: settings.deckTagsEnabled,
 	});
 
-	// Always refresh <!--ID--> so subsequent syncs hit update, not add.
-	if (
+	const needsIdWrite =
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
-		!card.idMarker
-	) {
-		await writeCardIdMarker(app, file, card, upserted.noteId);
+		!card.idMarker;
+
+	let pendingIdWrite: PendingIdMarkerWrite | undefined;
+	if (needsIdWrite) {
+		if (options?.deferIdWrite) {
+			pendingIdWrite = { card, noteId: upserted.noteId };
+		} else {
+			await writeCardIdMarker(app, file, card, upserted.noteId);
+		}
 	}
 
 	return {
@@ -302,6 +318,7 @@ export async function syncCardToAnki(
 		modelName: templateId,
 		warning: payload.warning,
 		stylePushed,
+		pendingIdWrite,
 	};
 }
 
@@ -360,20 +377,15 @@ export async function syncCardListToAnki(
 	}
 
 	const cards = [...cardsInput];
-	// Write ID markers from bottom to top so line indexes stay valid.
-	cards.sort((a, b) => {
-		const pathCmp = (a.sourceFilePath ?? '').localeCompare(
-			b.sourceFilePath ?? '',
-		);
-		if (pathCmp !== 0) {
-			return pathCmp;
-		}
-		return b.lineStart - a.lineStart;
-	});
+	// Group by file for stable processing; ID markers are written once at the end.
+	cards.sort((a, b) =>
+		(a.sourceFilePath ?? '').localeCompare(b.sourceFilePath ?? ''),
+	);
 
 	let ok = 0;
 	let fail = 0;
 	const warnings: string[] = [];
+	const pendingIdWrites: PendingIdMarkerWrite[] = [];
 	if (stylePushed) {
 		warnings.push('已将新卡片样式推送到 Anki（请重新打开预览查看）');
 	}
@@ -383,8 +395,12 @@ export async function syncCardListToAnki(
 			const result = await syncCardToAnki(app, settings, card, {
 				...options,
 				skipStylePush: true,
+				deferIdWrite: true,
 			});
 			ok += 1;
+			if (result.pendingIdWrite) {
+				pendingIdWrites.push(result.pendingIdWrite);
+			}
 			if (result.warning) {
 				warnings.push(result.warning);
 			}
@@ -393,6 +409,13 @@ export async function syncCardListToAnki(
 			const msg = error instanceof Error ? error.message : String(error);
 			warnings.push(`「${card.front.slice(0, 24)}」: ${msg}`);
 		}
+	}
+
+	try {
+		await writePendingIdMarkers(app, pendingIdWrites);
+	} catch (error) {
+		const msg = error instanceof Error ? error.message : String(error);
+		warnings.push(`写入 ID 标记失败：${msg}`);
 	}
 
 	let emptyDecksDeleted = 0;
