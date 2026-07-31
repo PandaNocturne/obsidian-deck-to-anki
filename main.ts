@@ -7,8 +7,8 @@ import {
 	type DeckToAnkiSettings,
 } from './src/settings';
 import { ANKI_ICON_ID, ANKI_ICON_SVG } from './src/ui/ankiIcon';
+import { openSyncPanel } from './src/ui/sync-panel/SyncPanelModal';
 import {
-	openSyncPanelView,
 	SYNC_PANEL_VIEW_TYPE,
 	SyncPanelView,
 } from './src/ui/sync-panel/SyncPanelView';
@@ -30,7 +30,7 @@ export default class DeckToAnkiPlugin extends Plugin {
 		);
 
 		this.addRibbonIcon(ANKI_ICON_ID, 'Deck To Anki', () => {
-			void openSyncPanelView(this);
+			openSyncPanel(this);
 		});
 
 		registerCommands(this);
