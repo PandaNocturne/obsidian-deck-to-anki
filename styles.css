@@ -471,6 +471,13 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-toolbar-btn.is-loading svg {
   animation: dta-sync-spin 0.8s linear infinite;
 }
+.dta-sync-toolbar-btn.is-needs-check {
+  color: var(--text-warning);
+}
+.dta-sync-toolbar-btn.is-needs-check:hover:not(:disabled) {
+  color: var(--text-warning);
+  background: color-mix(in srgb, var(--text-warning) 12%, transparent);
+}
 .dta-sync-body {
   flex: 1;
   min-height: 0;

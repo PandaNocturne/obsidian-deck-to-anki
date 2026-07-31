@@ -186,6 +186,54 @@ export class SyncPanelState {
 		this.collapseAllDecks(this.root);
 	}
 
+	/** True when every deck row is expanded. */
+	areAllExpanded(): boolean {
+		if (!this.root) {
+			return true;
+		}
+		let all = true;
+		const walk = (node: DeckNode) => {
+			if (this.collapsed.has(node.id)) {
+				all = false;
+				return;
+			}
+			for (const child of node.children) {
+				if (child.kind === 'deck') {
+					walk(child);
+				}
+			}
+		};
+		walk(this.root);
+		return all;
+	}
+
+	deselectAll(): void {
+		this.selected.clear();
+	}
+
+	/** True when every selectable leaf is checked. */
+	areAllLeavesSelected(): boolean {
+		if (!this.root) {
+			return false;
+		}
+		const leaves = this.collectLeaves(this.root).filter((leaf) =>
+			this.shouldSelectLeaf(leaf),
+		);
+		if (leaves.length === 0) {
+			return false;
+		}
+		return leaves.every((leaf) => this.selected.has(leaf.id));
+	}
+
+	/** Select all selectable leaves under the current root. */
+	selectAllVisible(): void {
+		if (!this.root) {
+			return;
+		}
+		this.selected.clear();
+		this.selectAll(this.root);
+	}
+
 	isSelected(id: string): boolean {
 		return this.selected.has(id);
 	}

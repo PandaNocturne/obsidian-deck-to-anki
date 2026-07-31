@@ -162,6 +162,8 @@ export class SyncPanelUI {
 	private busyNodeId: string | null = null;
 	private checkBtnEl!: HTMLButtonElement;
 	private refreshBtnEl!: HTMLButtonElement;
+	private selectAllBtnEl!: HTMLButtonElement;
+	private expandToggleBtnEl!: HTMLButtonElement;
 	private updateBtnEl!: HTMLButtonElement;
 	private forceBtnEl!: HTMLButtonElement;
 	private progressEl!: HTMLElement;
@@ -190,7 +192,23 @@ export class SyncPanelUI {
 	mount(hostEl: HTMLElement): void {
 		this.hostEl = hostEl;
 		this.renderChrome();
+		void this.notifyIfAnkiDisconnected();
 		void this.reload();
+	}
+
+	private async notifyIfAnkiDisconnected(): Promise<void> {
+		const client = new AnkiConnectClient(
+			() =>
+				this.plugin.settings.ankiConnectUrl ||
+				'http://127.0.0.1:8765',
+		);
+		try {
+			await client.ping();
+		} catch {
+			new Notice(
+				'未连接到 Anki：请确认 Anki 已启动且 AnkiConnect 可用',
+			);
+		}
 	}
 
 	unmount(): void {
@@ -245,30 +263,42 @@ export class SyncPanelUI {
 		this.statusEl = meta.createDiv({ cls: 'dta-sync-status' });
 		const toolbar = meta.createDiv({ cls: 'dta-sync-toolbar' });
 
-		const expandBtn = toolbar.createEl('button', {
+		const selectAllBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '全选', title: '全选' },
+		});
+		this.selectAllBtnEl = selectAllBtn;
+		setIcon(selectAllBtn, 'square-check');
+		selectAllBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
+			if (this.state.areAllLeavesSelected()) {
+				this.state.deselectAll();
+			} else {
+				this.state.selectAllVisible();
+			}
+			this.renderBody();
+			this.refreshToolbarToggleIcons();
+		});
+
+		const expandToggleBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: { 'aria-label': '全部展开', title: '全部展开' },
 		});
-		setIcon(expandBtn, 'chevrons-down');
-		expandBtn.addEventListener('click', () => {
+		this.expandToggleBtnEl = expandToggleBtn;
+		setIcon(expandToggleBtn, 'unfold-vertical');
+		expandToggleBtn.addEventListener('click', () => {
 			if (this.busy) {
 				return;
 			}
-			this.state.expandAll();
-			this.renderBody();
-		});
-
-		const collapseBtn = toolbar.createEl('button', {
-			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '全部折叠', title: '全部折叠' },
-		});
-		setIcon(collapseBtn, 'chevrons-up');
-		collapseBtn.addEventListener('click', () => {
-			if (this.busy) {
-				return;
+			if (this.state.areAllExpanded()) {
+				this.state.collapseAll();
+			} else {
+				this.state.expandAll();
 			}
-			this.state.collapseAll();
 			this.renderBody();
+			this.refreshToolbarToggleIcons();
 		});
 
 		const refreshBtn = toolbar.createEl('button', {
@@ -314,6 +344,8 @@ export class SyncPanelUI {
 			setting.open();
 			setting.openTabById(this.plugin.manifest.id);
 		});
+
+		this.refreshToolbarToggleIcons();
 
 		const bodyEl = contentEl.createDiv({ cls: 'dta-sync-body' });
 		this.treeHostEl = bodyEl.createDiv({ cls: 'dta-sync-tree-host' });
@@ -367,6 +399,8 @@ export class SyncPanelUI {
 				this.options.onRequestClose?.();
 			});
 		}
+
+		this.refreshCheckBtnHint();
 	}
 
 	private setBusy(
@@ -416,6 +450,8 @@ export class SyncPanelUI {
 		const controls: HTMLButtonElement[] = [
 			this.checkBtnEl,
 			this.refreshBtnEl,
+			this.selectAllBtnEl,
+			this.expandToggleBtnEl,
 			this.updateBtnEl,
 			this.forceBtnEl,
 			this.allTabEl,
@@ -446,9 +482,14 @@ export class SyncPanelUI {
 		this.refreshBtnEl.title =
 			this.busy === 'reload' ? '刷新中…' : '重新解析';
 
+		if (!busy) {
+			this.refreshToolbarToggleIcons();
+		}
+
 		const updateLoading = this.busy === 'sync' && !this.busyNodeId;
 		this.updateBtnEl.toggleClass('is-loading', updateLoading);
 		this.updateBtnEl.setText(updateLoading ? '同步中…' : 'Update');
+		this.refreshCheckBtnHint();
 
 		this.treeHostEl
 			?.querySelectorAll<HTMLButtonElement>('[data-dta-sync]')
@@ -466,6 +507,45 @@ export class SyncPanelUI {
 					? '进行中…'
 					: (btn.getAttribute('aria-label') ?? '');
 			});
+	}
+
+	private refreshToolbarToggleIcons(): void {
+		if (!this.selectAllBtnEl || !this.expandToggleBtnEl) {
+			return;
+		}
+		const allSelected = this.state.areAllLeavesSelected();
+		setIcon(this.selectAllBtnEl, allSelected ? 'square-x' : 'square-check');
+		this.selectAllBtnEl.setAttribute(
+			'aria-label',
+			allSelected ? '取消全选' : '全选',
+		);
+		this.selectAllBtnEl.title = allSelected ? '取消全选' : '全选';
+
+		const allExpanded = this.state.areAllExpanded();
+		setIcon(
+			this.expandToggleBtnEl,
+			allExpanded ? 'fold-vertical' : 'unfold-vertical',
+		);
+		this.expandToggleBtnEl.setAttribute(
+			'aria-label',
+			allExpanded ? '全部折叠' : '全部展开',
+		);
+		this.expandToggleBtnEl.title = allExpanded ? '全部折叠' : '全部展开';
+	}
+
+	/** Soft-warn the check button until Anki status has been checked. */
+	private refreshCheckBtnHint(): void {
+		if (!this.checkBtnEl) {
+			return;
+		}
+		const needsCheck = !this.ankiStatusChecked && this.busy !== 'check';
+		this.checkBtnEl.toggleClass('is-needs-check', needsCheck);
+		if (this.busy === 'check') {
+			return;
+		}
+		this.checkBtnEl.title = needsCheck
+			? '尚未检测：点击对照 Anki 检测勾选卡片的同步状态'
+			: '对照 Anki 检测勾选卡片的同步状态';
 	}
 
 	private async handleRefresh(): Promise<void> {
@@ -1639,6 +1719,8 @@ export class SyncPanelUI {
 			'is-active',
 			this.state.tab === 'archived',
 		);
+		this.refreshToolbarToggleIcons();
+		this.refreshCheckBtnHint();
 	}
 
 	private getActiveMarkdownFile(): TFile | null {
