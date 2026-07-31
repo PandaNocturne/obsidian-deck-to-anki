@@ -264,25 +264,6 @@ export class SyncPanelUI {
 		this.statusEl = meta.createDiv({ cls: 'dta-sync-status' });
 		const toolbar = meta.createDiv({ cls: 'dta-sync-toolbar' });
 
-		const selectAllBtn = toolbar.createEl('button', {
-			cls: 'dta-sync-toolbar-btn clickable-icon',
-			attr: { 'aria-label': '全选', title: '全选' },
-		});
-		this.selectAllBtnEl = selectAllBtn;
-		setIcon(selectAllBtn, 'square-check');
-		selectAllBtn.addEventListener('click', () => {
-			if (this.busy) {
-				return;
-			}
-			if (this.state.areAllLeavesSelected()) {
-				this.state.deselectAll();
-			} else {
-				this.state.selectAllVisible();
-			}
-			this.renderBody();
-			this.refreshToolbarToggleIcons();
-		});
-
 		const expandBtn = toolbar.createEl('button', {
 			cls: 'dta-sync-toolbar-btn clickable-icon',
 			attr: { 'aria-label': '全部展开', title: '全部展开' },
@@ -331,7 +312,7 @@ export class SyncPanelUI {
 			},
 		});
 		this.checkBtnEl = checkBtn;
-		setIcon(checkBtn, 'refresh-cw');
+		setIcon(checkBtn, 'scan-search');
 		checkBtn.addEventListener('click', () => {
 			void this.handleCheckStatus();
 		});
@@ -355,6 +336,25 @@ export class SyncPanelUI {
 			).setting;
 			setting.open();
 			setting.openTabById(this.plugin.manifest.id);
+		});
+
+		const selectAllBtn = toolbar.createEl('button', {
+			cls: 'dta-sync-toolbar-btn clickable-icon',
+			attr: { 'aria-label': '全选', title: '全选' },
+		});
+		this.selectAllBtnEl = selectAllBtn;
+		setIcon(selectAllBtn, 'square-check');
+		selectAllBtn.addEventListener('click', () => {
+			if (this.busy) {
+				return;
+			}
+			if (this.state.areAllLeavesSelected()) {
+				this.state.deselectAll();
+			} else {
+				this.state.selectAllVisible();
+			}
+			this.renderBody();
+			this.refreshToolbarToggleIcons();
 		});
 
 		this.refreshToolbarToggleIcons();
@@ -480,7 +480,7 @@ export class SyncPanelUI {
 		this.checkBtnEl.toggleClass('is-loading', this.busy === 'check');
 		setIcon(
 			this.checkBtnEl,
-			this.busy === 'check' ? 'loader-circle' : 'refresh-cw',
+			this.busy === 'check' ? 'loader-circle' : 'scan-search',
 		);
 		this.checkBtnEl.title =
 			this.busy === 'check'
