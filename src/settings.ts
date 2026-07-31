@@ -221,17 +221,29 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		containerEl.addClass('deck-to-anki-settings');
 
-		this.renderParseSettings(containerEl);
-		this.renderSyncSettings(containerEl);
-		this.renderMediaSettings(containerEl);
-		this.renderTemplateSettings(containerEl);
-		this.renderParseFieldSettings(containerEl);
-		this.renderCustomFieldSettings(containerEl);
+		const general = this.beginGroup(containerEl, '常规');
+		this.renderParseSettings(general);
+		this.renderSyncSettings(general);
+		this.renderMediaSettings(general);
+
+		const template = this.beginGroup(containerEl, '模板');
+		this.renderTemplateSettings(template);
+		this.renderCustomFieldSettings(template);
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',
 			text: '笔记 YAML（camelCase）：deckType、deckName、deckLevel、deckStatus、deckTemplate、deckFile、deckNumbering。',
 		});
+	}
+
+	/** Top-level group (常规 / 模板). */
+	private beginGroup(containerEl: HTMLElement, title: string): HTMLElement {
+		const group = containerEl.createDiv({ cls: 'dta-settings-group' });
+		group.createEl('h2', {
+			text: title,
+			cls: 'dta-settings-group-title',
+		});
+		return group;
 	}
 
 	/** Section heading + short blurb, wrapped for visual grouping. */
@@ -564,16 +576,16 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 	}
 
-	private renderParseFieldSettings(containerEl: HTMLElement): void {
+	private renderCustomFieldSettings(containerEl: HTMLElement): void {
 		const section = this.beginSection(
 			containerEl,
-			'解析字段',
-			'写入 Anki 的解析结果：ob-deck-head / front / back / tags。标题与正文分字段，便于分别设样式。',
+			'自定义字段',
+			'解析字段（head / front / back / tags）与自定义字段（backlink / tree）。',
 		);
 
 		section.createEl('p', {
 			cls: 'dta-settings-section-desc',
-			text: 'ob-deck-head：标题 · ob-deck-front：正面正文（不含标题）· ob-deck-back：背面 · ob-deck-tags：标签',
+			text: 'ob-deck-head：标题 · ob-deck-front：正面正文 · ob-deck-back：背面 · ob-deck-tags：标签 · ob-deck-backlink：回链 · ob-deck-tree：牌组树',
 		});
 
 		new Setting(section)
@@ -589,14 +601,6 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
-	}
-
-	private renderCustomFieldSettings(containerEl: HTMLElement): void {
-		const section = this.beginSection(
-			containerEl,
-			'自定义字段',
-			'ob-deck-backlink：定位当前卡片 · ob-deck-tree：牌组树。',
-		);
 
 		const linkTextSetting = new Setting(section)
 			.setName('回链链接文本')

@@ -10,12 +10,26 @@ if you want to view the source, please visit the github repository of this plugi
 .deck-to-anki-settings {
   padding-top: 0.35rem;
 }
+.deck-to-anki-settings .dta-settings-group {
+  margin: 0 0 1.35rem;
+}
+.deck-to-anki-settings .dta-settings-group-title {
+  margin: 0 0 0.65rem;
+  padding: 0 0.15rem;
+  font-size: 1.2em;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text-normal);
+}
 .deck-to-anki-settings .dta-settings-section {
-  margin: 0 0 1.1rem;
+  margin: 0 0 0.85rem;
   padding: 0.85rem 1rem 0.55rem;
   border: 1px solid var(--background-modifier-border);
   border-radius: 10px;
   background: var(--background-secondary);
+}
+.deck-to-anki-settings .dta-settings-group > .dta-settings-section:last-child {
+  margin-bottom: 0;
 }
 .deck-to-anki-settings .dta-settings-section-title {
   margin: 0 0 0.25rem;
