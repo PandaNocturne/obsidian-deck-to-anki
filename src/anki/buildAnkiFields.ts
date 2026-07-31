@@ -10,7 +10,7 @@ import {
 	buildCardBacklinkUri,
 	buildDeckBacklinkHtml,
 	buildDeckSegmentUris,
-	cardBacklinkLabel,
+	resolveCardBacklinkLinkText,
 	resolveSourceFile,
 	toAnkiDeckNameForCard,
 	type BacklinkScheme,
@@ -93,14 +93,6 @@ export function splitCardHeadAndFront(card: CardNode): {
 	return { headMarkdown: head, frontMarkdown: front };
 }
 
-function escapeHtml(text: string): string {
-	return text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;');
-}
-
 /**
  * Build Anki fields the same way for sync and status compare.
  * Vault source files are never modified here.
@@ -137,16 +129,19 @@ export async function buildAnkiNoteFieldPayload(
 
 	const { headMarkdown, frontMarkdown } = splitCardHeadAndFront(card);
 	const mediaOpts = mediaOptions(settings, options?.mediaCache);
-	const [front, back] = await Promise.all([
+	const emptyField = (): Promise<{ html: string; assets: MediaAsset[] }> =>
+		Promise.resolve({ html: '', assets: [] });
+	const [head, front, back] = await Promise.all([
+		headMarkdown
+			? renderFieldWithMedia(app, headMarkdown, filePath, mediaOpts)
+			: emptyField(),
 		frontMarkdown
 			? renderFieldWithMedia(app, frontMarkdown, filePath, mediaOpts)
-			: Promise.resolve({ html: '', assets: [] as MediaAsset[] }),
+			: emptyField(),
 		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
 	]);
 
-	const headText = headMarkdown ? escapeHtml(headMarkdown) : '';
-	// Deck numbering is applied to Anki deck path + ob-deck-tree, not card body.
-	const headField = headText;
+	const headField = head.html;
 	const frontField = front.html;
 
 	let warning: string | undefined;
@@ -191,7 +186,11 @@ export async function buildAnkiNoteFieldPayload(
 		}
 		cardBacklinkHtml = buildCardBacklinkHtml(
 			cardLink.uri,
-			cardBacklinkLabel(card),
+			resolveCardBacklinkLinkText(
+				card,
+				settings.backlinkLinkTextMode ?? 'auto',
+				settings.backlinkLinkText ?? 'backlink',
+			),
 		);
 	}
 
@@ -215,7 +214,11 @@ export async function buildAnkiNoteFieldPayload(
 			[FIELD_TREE]: treeHtml,
 		},
 		tags,
-		assets: dedupeMediaAssets([...front.assets, ...back.assets]),
+		assets: dedupeMediaAssets([
+			...head.assets,
+			...front.assets,
+			...back.assets,
+		]),
 		warning,
 	};
 }

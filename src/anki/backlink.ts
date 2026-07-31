@@ -227,7 +227,7 @@ export function cardJumpTarget(card: CardNode): {
 	return heading ? { heading } : {};
 }
 
-/** Display label for ob-deck-backlink. */
+/** Display label for ob-deck-backlink (Auto / detected). */
 export function cardBacklinkLabel(card: CardNode): string {
 	const target = cardJumpTarget(card);
 	if (target.block) {
@@ -237,6 +237,19 @@ export function cardBacklinkLabel(card: CardNode): string {
 		return target.heading;
 	}
 	return '打开笔记';
+}
+
+/** Resolve card backlink anchor text from settings mode. */
+export function resolveCardBacklinkLinkText(
+	card: CardNode,
+	mode: 'auto' | 'custom',
+	customText: string,
+): string {
+	if (mode === 'custom') {
+		const text = customText.trim();
+		return text || 'backlink';
+	}
+	return cardBacklinkLabel(card);
 }
 
 export function buildCardBacklinkUri(options: BuildBacklinkOptions): {

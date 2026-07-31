@@ -53,6 +53,14 @@ export interface DeckToAnkiSettings {
 	deckTreeLinkEnabled: boolean;
 	/** Write ob-deck-backlink (open current card in Obsidian). */
 	deckCardBacklinkEnabled: boolean;
+	/**
+	 * Card backlink anchor text:
+	 * - auto: detected (heading / ^block / 打开笔记)
+	 * - custom: fixed label from `backlinkLinkText` (default "backlink")
+	 */
+	backlinkLinkTextMode: 'auto' | 'custom';
+	/** Used when backlinkLinkTextMode is custom. */
+	backlinkLinkText: string;
 	/** URI scheme for card backlink and tree links. */
 	backlinkScheme: BacklinkScheme;
 	/** Frontmatter property for Advanced URI uid. */
@@ -92,6 +100,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	deckTreeEnabled: true,
 	deckTreeLinkEnabled: true,
 	deckCardBacklinkEnabled: true,
+	backlinkLinkTextMode: 'auto',
+	backlinkLinkText: 'backlink',
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
@@ -161,6 +171,20 @@ export function mergeSettings(
 	}
 	if (typeof base.deckCardBacklinkEnabled !== 'boolean') {
 		base.deckCardBacklinkEnabled = DEFAULT_SETTINGS.deckCardBacklinkEnabled;
+	}
+	// Legacy unreleased name: originText (detected) → auto.
+	const linkMode = base.backlinkLinkTextMode as string;
+	if (linkMode === 'custom') {
+		base.backlinkLinkTextMode = 'custom';
+	} else if (linkMode === 'auto' || linkMode === 'originText') {
+		base.backlinkLinkTextMode = 'auto';
+	} else {
+		base.backlinkLinkTextMode = DEFAULT_SETTINGS.backlinkLinkTextMode;
+	}
+	if (typeof base.backlinkLinkText !== 'string' || !base.backlinkLinkText.trim()) {
+		base.backlinkLinkText = DEFAULT_SETTINGS.backlinkLinkText;
+	} else {
+		base.backlinkLinkText = base.backlinkLinkText.trim();
 	}
 
 	return base;
@@ -568,6 +592,42 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						this.display();
 					}),
 			);
+
+		if (this.plugin.settings.deckCardBacklinkEnabled !== false) {
+			new Setting(section)
+				.setName('回链链接文本')
+				.setDesc(
+					'Auto：自动识别（标题 / ^块 ID / 打开笔记）；Custom：使用下方固定文案。',
+				)
+				.addDropdown((dropdown) =>
+					dropdown
+						.addOption('auto', 'Auto')
+						.addOption('custom', 'Custom')
+						.setValue(this.plugin.settings.backlinkLinkTextMode)
+						.onChange(async (value) => {
+							this.plugin.settings.backlinkLinkTextMode =
+								value === 'custom' ? 'custom' : 'auto';
+							await this.plugin.saveSettings();
+							this.display();
+						}),
+				);
+
+			if (this.plugin.settings.backlinkLinkTextMode === 'custom') {
+				new Setting(section)
+					.setName('Custom 链接文本')
+					.setDesc('卡片回链锚点文字。默认为 backlink。')
+					.addText((text) =>
+						text
+							.setPlaceholder('backlink')
+							.setValue(this.plugin.settings.backlinkLinkText)
+							.onChange(async (value) => {
+								const next = value.trim() || 'backlink';
+								this.plugin.settings.backlinkLinkText = next;
+								await this.plugin.saveSettings();
+							}),
+					);
+			}
+		}
 
 		new Setting(section)
 			.setName('牌组树（ob-deck-tree）')
