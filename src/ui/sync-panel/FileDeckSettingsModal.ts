@@ -24,8 +24,6 @@ export interface FileDeckSettingsValues {
 	deckTemplate: DeckTemplateId;
 	/** YAML deckNumbering — sync deck sibling indexes. */
 	deckNumbering: boolean;
-	/** YAML cardNumbering — sync card sibling indexes. */
-	cardNumbering: boolean;
 }
 
 export interface FileDeckSettingsOptions {
@@ -111,8 +109,7 @@ export class FileDeckSettingsModal extends Modal {
 			this.draft.deckLevel !== this.initial.deckLevel ||
 			this.draft.deckStatus !== this.initial.deckStatus ||
 			this.draft.deckTemplate !== this.initial.deckTemplate ||
-			this.draft.deckNumbering !== this.initial.deckNumbering ||
-			this.draft.cardNumbering !== this.initial.cardNumbering
+			this.draft.deckNumbering !== this.initial.deckNumbering
 		);
 	}
 
@@ -202,26 +199,13 @@ export class FileDeckSettingsModal extends Modal {
 			new Setting(contentEl)
 				.setName('牌组编号')
 				.setDesc(
-					'YAML: deckNumbering — 同步时把牌组同级序号写入 Anki（正面 / 回链）',
+					'YAML: deckNumbering — 同步时把牌组同级序号写入 Anki（正面 / 牌组树）',
 				)
 				.addToggle((toggle) =>
 					toggle
 						.setValue(this.draft.deckNumbering)
 						.onChange((value) => {
 							this.draft.deckNumbering = value;
-						}),
-				);
-
-			new Setting(contentEl)
-				.setName('卡片编号')
-				.setDesc(
-					'YAML: cardNumbering — 同步时把卡片同级序号写入 Anki 正面',
-				)
-				.addToggle((toggle) =>
-					toggle
-						.setValue(this.draft.cardNumbering)
-						.onChange((value) => {
-							this.draft.cardNumbering = value;
 						}),
 				);
 		}
@@ -283,7 +267,6 @@ export class FileDeckSettingsModal extends Modal {
 			deckStatus: this.draft.deckStatus,
 			deckTemplate: this.draft.deckTemplate,
 			deckNumbering: this.draft.deckNumbering,
-			cardNumbering: this.draft.cardNumbering,
 		});
 
 		if (next === content) {

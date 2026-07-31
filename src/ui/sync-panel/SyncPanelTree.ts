@@ -46,8 +46,6 @@ export interface SyncPanelTreeOptions {
 	busyNodeId?: string | null;
 	/** Show deck sibling indexes in the tree (default true). */
 	showDeckNumbers?: boolean;
-	/** Show card sibling indexes in the tree (default false). */
-	showCardNumbers?: boolean;
 }
 
 function bindSyncActionButton(
@@ -381,14 +379,6 @@ function renderDeletedCard(
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
 	setIcon(icon, 'trash-2');
 
-	if (options.showCardNumbers === true) {
-		row.createSpan({
-			cls: 'dta-sync-card-index',
-			text: `${card.siblingIndex ?? siblingIndex}.`,
-			attr: { title: '卡片编号' },
-		});
-	}
-
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({
 		cls: 'dta-sync-name is-deleted',
@@ -471,14 +461,6 @@ function renderCard(
 
 	const icon = row.createSpan({ cls: 'dta-sync-card-icon' });
 	setIcon(icon, resolveCardIcon(card.deckClass));
-
-	if (options.showCardNumbers === true) {
-		row.createSpan({
-			cls: 'dta-sync-card-index',
-			text: `${card.siblingIndex ?? siblingIndex}.`,
-			attr: { title: '卡片编号' },
-		});
-	}
 
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({

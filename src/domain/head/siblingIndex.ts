@@ -35,26 +35,15 @@ export function assignSiblingIndexes(root: DeckNode): void {
 	walk(root, []);
 }
 
-/** `1.2.3. ` from deck path indexes + optional card sibling index. */
+/** `1.2. ` from ancestor deck sibling indexes (cards themselves are not numbered). */
 export function formatCardNumberPrefix(
 	card: CardNode,
-	options: { deckNumbering: boolean; cardNumbering: boolean },
+	options: { deckNumbering: boolean },
 ): string {
-	const parts: number[] = [];
-	if (options.deckNumbering && card.deckIndexPath?.length) {
-		parts.push(...card.deckIndexPath);
-	}
-	if (
-		options.cardNumbering &&
-		card.siblingIndex !== undefined &&
-		card.siblingIndex > 0
-	) {
-		parts.push(card.siblingIndex);
-	}
-	if (parts.length === 0) {
+	if (!options.deckNumbering || !card.deckIndexPath?.length) {
 		return '';
 	}
-	return `${parts.join('.')}. `;
+	return `${card.deckIndexPath.join('.')}. `;
 }
 
 /** Prefix backlink crumb labels with deck sibling indexes when enabled. */

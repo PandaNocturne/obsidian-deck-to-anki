@@ -56,7 +56,6 @@ interface SessionDeckSettings {
 	deckStatus: boolean;
 	deckTemplate: DeckTemplateId;
 	deckNumbering: boolean;
-	cardNumbering: boolean;
 }
 
 function asDeckTemplateId(
@@ -819,20 +818,17 @@ export class SyncPanelUI {
 
 	private resolvePanelNumbering(): {
 		deckNumbering: boolean;
-		cardNumbering: boolean;
 	} {
 		if (this.state.tab === 'current') {
 			if (this.sessionOverride) {
 				return {
 					deckNumbering: this.sessionOverride.deckNumbering,
-					cardNumbering: this.sessionOverride.cardNumbering,
 				};
 			}
 			if (this.parsed) {
 				return resolveNumberingOptions(
 					{
 						deckNumbering: this.parsed.yamlDeckNumbering,
-						cardNumbering: this.parsed.yamlCardNumbering,
 					},
 					this.plugin.settings,
 				);
@@ -904,7 +900,6 @@ export class SyncPanelUI {
 			busy: this.busy !== null,
 			busyNodeId: this.busyNodeId,
 			showDeckNumbers: numbering.deckNumbering,
-			showCardNumbers: numbering.cardNumbering,
 		};
 
 		if (
@@ -1267,7 +1262,6 @@ export class SyncPanelUI {
 			fallbackTemplate,
 		);
 		let deckNumbering = defaultNumbering.deckNumbering;
-		let cardNumbering = defaultNumbering.cardNumbering;
 
 		if (isCurrentRoot && this.parsed) {
 			if (this.sessionOverride) {
@@ -1277,7 +1271,6 @@ export class SyncPanelUI {
 				deckStatus = this.sessionOverride.deckStatus;
 				deckTemplate = this.sessionOverride.deckTemplate;
 				deckNumbering = this.sessionOverride.deckNumbering;
-				cardNumbering = this.sessionOverride.cardNumbering;
 			} else {
 				deckType = this.state.parseType;
 				deckName = this.parsed.yamlDeckName ?? '';
@@ -1290,12 +1283,10 @@ export class SyncPanelUI {
 				const n = resolveNumberingOptions(
 					{
 						deckNumbering: this.parsed.yamlDeckNumbering,
-						cardNumbering: this.parsed.yamlCardNumbering,
 					},
 					this.plugin.settings,
 				);
 				deckNumbering = n.deckNumbering;
-				cardNumbering = n.cardNumbering;
 			}
 		} else {
 			const childOverride = this.childOverrides.get(file.path);
@@ -1306,7 +1297,6 @@ export class SyncPanelUI {
 				deckStatus = childOverride.deckStatus;
 				deckTemplate = childOverride.deckTemplate;
 				deckNumbering = childOverride.deckNumbering;
-				cardNumbering = childOverride.cardNumbering;
 			} else {
 				const content = await this.app.vault.cachedRead(file);
 				const meta = parseFrontmatter(content);
@@ -1320,7 +1310,6 @@ export class SyncPanelUI {
 				);
 				const n = resolveNumberingOptions(meta, this.plugin.settings);
 				deckNumbering = n.deckNumbering;
-				cardNumbering = n.cardNumbering;
 				if (
 					deckType === 'file' &&
 					!isForestNoteRoot &&
@@ -1342,7 +1331,6 @@ export class SyncPanelUI {
 				deckStatus,
 				deckTemplate,
 				deckNumbering,
-				cardNumbering,
 			},
 			async (values, result) => {
 				if (values.deckType === 'none') {
@@ -1368,7 +1356,6 @@ export class SyncPanelUI {
 							deckStatus: values.deckStatus,
 							deckTemplate: values.deckTemplate,
 							deckNumbering: values.deckNumbering,
-							cardNumbering: values.cardNumbering,
 						};
 						new Notice(
 							`已切换解析为 ${values.deckType}（未写入 YAML，可用 Update/Save 保存）`,
@@ -1384,7 +1371,6 @@ export class SyncPanelUI {
 						deckStatus: values.deckStatus,
 						deckTemplate: values.deckTemplate,
 						deckNumbering: values.deckNumbering,
-						cardNumbering: values.cardNumbering,
 					});
 					new Notice(
 						`子笔记已按 ${values.deckType} 解析（未写入 YAML）`,

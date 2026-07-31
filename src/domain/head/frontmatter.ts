@@ -16,6 +16,7 @@ const ALL_DECK_YAML_KEYS = new Set([
 	'deckFile',
 	'deckTemplate',
 	'deckNumbering',
+	/** Legacy; removed from UI but still stripped when clearing deck YAML. */
 	'cardNumbering',
 ]);
 
@@ -32,10 +33,8 @@ export interface FrontmatterMeta {
 	deckFile?: string;
 	/** Anki note type: ob-deck-basic | ob-deck-basic++ */
 	deckTemplate?: DeckTemplateId;
-	/** Sync deck sibling indexes into Anki front/backlink. */
+	/** Sync deck sibling indexes into Anki front/tree. */
 	deckNumbering?: boolean;
-	/** Sync card sibling indexes into Anki front. */
-	cardNumbering?: boolean;
 	warnings: string[];
 }
 
@@ -127,7 +126,6 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 	let deckFile: string | undefined;
 	let deckTemplate: DeckTemplateId | undefined;
 	let deckNumbering: boolean | undefined;
-	let cardNumbering: boolean | undefined;
 
 	for (const rawLine of body.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -189,14 +187,8 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 			} else if (value) {
 				warnings.push(`无效 deckNumbering: ${value}`);
 			}
-		} else if (key === 'cardNumbering') {
-			const parsed = parseBoolean(value);
-			if (parsed !== undefined) {
-				cardNumbering = parsed;
-			} else if (value) {
-				warnings.push(`无效 cardNumbering: ${value}`);
-			}
 		}
+		// Legacy cardNumbering is ignored (cards are never numbered).
 	}
 
 	return {
@@ -207,7 +199,6 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 		deckFile,
 		deckTemplate,
 		deckNumbering,
-		cardNumbering,
 		warnings,
 	};
 }
@@ -228,8 +219,6 @@ export interface UpsertDeckYamlProps {
 	deckTemplate?: DeckTemplateId | null;
 	/** Sync deck indexes. `null` removes the key (fall back to plugin default). */
 	deckNumbering?: boolean | null;
-	/** Sync card indexes. `null` removes the key (fall back to plugin default). */
-	cardNumbering?: boolean | null;
 }
 
 function applyFrontmatterUpdates(
@@ -307,7 +296,7 @@ function stripEmptyFrontmatter(content: string): string {
 
 /**
  * Remove all deck-related YAML properties (deckType / deckName / deckLevel /
- * deckStatus / deckFile / deckTemplate / deckNumbering / cardNumbering).
+ * deckStatus / deckFile / deckTemplate / deckNumbering).
  * Drops empty frontmatter block.
  */
 export function clearAllDeckYaml(content: string): string {
@@ -364,14 +353,6 @@ export function upsertDeckYaml(
 			removeKeys.add('deckNumbering');
 		} else {
 			updates.deckNumbering = props.deckNumbering ? 'true' : 'false';
-		}
-	}
-
-	if (props.cardNumbering !== undefined) {
-		if (props.cardNumbering === null) {
-			removeKeys.add('cardNumbering');
-		} else {
-			updates.cardNumbering = props.cardNumbering ? 'true' : 'false';
 		}
 	}
 

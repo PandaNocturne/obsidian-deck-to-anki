@@ -3,21 +3,18 @@ import type { DeckToAnkiSettings } from '../settings';
 
 export interface NumberingOptions {
 	deckNumbering: boolean;
-	cardNumbering: boolean;
 }
 
 /**
- * Per-note YAML overrides plugin defaults when the key is present.
- * Default: deck numbering on, card numbering off.
+ * Per-note YAML `deckNumbering` overrides plugin default when present.
+ * Default: deck numbering on. Cards are never numbered.
  */
 export function resolveNumberingOptions(
-	meta: Pick<FrontmatterMeta, 'deckNumbering' | 'cardNumbering'>,
+	meta: Pick<FrontmatterMeta, 'deckNumbering'>,
 	settings: DeckToAnkiSettings,
 ): NumberingOptions {
 	return {
 		deckNumbering:
 			meta.deckNumbering ?? settings.deckNumberingEnabled !== false,
-		cardNumbering:
-			meta.cardNumbering ?? settings.cardNumberingEnabled === true,
 	};
 }

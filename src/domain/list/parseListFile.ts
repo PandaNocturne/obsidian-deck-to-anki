@@ -47,7 +47,6 @@ export function parseListFile(
 		yamlDeckLevel: meta.deckLevel,
 		yamlDeckTemplate: meta.deckTemplate,
 		yamlDeckNumbering: meta.deckNumbering,
-		yamlCardNumbering: meta.cardNumbering,
 		deckStatus: meta.deckStatus,
 		root,
 		warnings,

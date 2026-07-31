@@ -123,8 +123,6 @@ export interface ParsedHeadFile {
 	yamlDeckTemplate?: string;
 	/** YAML deckNumbering override, if declared. */
 	yamlDeckNumbering?: boolean;
-	/** YAML cardNumbering override, if declared. */
-	yamlCardNumbering?: boolean;
 	/** YAML deckStatus: true = archived, false = learning. */
 	deckStatus: boolean;
 	root: DeckNode;

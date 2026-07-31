@@ -63,15 +63,10 @@ export interface DeckToAnkiSettings {
 	 */
 	autoCheckCurrentNote: boolean;
 	/**
-	 * Sync deck sibling indexes into Anki front / backlink (e.g. `1.2. `).
+	 * Sync deck sibling indexes into Anki front / tree (e.g. `1.2. `).
 	 * Notes may override via YAML `deckNumbering`. Default on.
 	 */
 	deckNumberingEnabled: boolean;
-	/**
-	 * Sync card sibling indexes into Anki front. Notes may override via
-	 * YAML `cardNumbering`. Default off.
-	 */
-	cardNumberingEnabled: boolean;
 	/**
 	 * Compress raster images when uploading to Anki (vault files unchanged).
 	 * Default on.
@@ -101,7 +96,6 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
 	deckNumberingEnabled: true,
-	cardNumberingEnabled: false,
 	mediaCompressEnabled: true,
 	mediaCompressQuality: 75,
 	includeFolders: [],
@@ -212,7 +206,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('p', {
 			cls: 'deck-to-anki-settings-hint',
-			text: '笔记 YAML（camelCase）：deckType、deckName、deckLevel、deckStatus、deckTemplate、deckFile、deckNumbering、cardNumbering。',
+			text: '笔记 YAML（camelCase）：deckType、deckName、deckLevel、deckStatus、deckTemplate、deckFile、deckNumbering。',
 		});
 	}
 
@@ -343,27 +337,13 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(section)
 			.setName('同步牌组编号')
 			.setDesc(
-				'将牌组同级序号写入 Anki（正面前缀 / 回链，如 1.2. ）。YAML: deckNumbering。默认开启。',
+				'将牌组同级序号写入 Anki（正面前缀 / 牌组树，如 1.2. ）。YAML: deckNumbering。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(this.plugin.settings.deckNumberingEnabled !== false)
 					.onChange(async (value) => {
 						this.plugin.settings.deckNumberingEnabled = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(section)
-			.setName('同步卡片编号')
-			.setDesc(
-				'将卡片同级序号写入 Anki 正面（如 3. 或 1.2.3. ）。YAML: cardNumbering。默认关闭。',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.cardNumberingEnabled === true)
-					.onChange(async (value) => {
-						this.plugin.settings.cardNumberingEnabled = value;
 						await this.plugin.saveSettings();
 					}),
 			);
