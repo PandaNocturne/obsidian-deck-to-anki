@@ -199,7 +199,7 @@ export class FileDeckSettingsModal extends Modal {
 			new Setting(contentEl)
 				.setName('牌组编号')
 				.setDesc(
-					'YAML: deckNumbering — 同步时把牌组同级序号写入 Anki（正面 / 牌组树）',
+					'YAML: deckNumbering — 同步树与 Anki ob-deck-tree 显示牌组序号；不写入卡片标题/正文',
 				)
 				.addToggle((toggle) =>
 					toggle

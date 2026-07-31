@@ -88,10 +88,20 @@ export function renderSyncPanelTree(
 	const list = container.createDiv({ cls: 'dta-sync-tree' });
 
 	if (options.skipRootRow) {
+		let deckSibling = 0;
 		let cardSibling = 0;
 		for (const child of root.children) {
 			if (child.kind === 'deck') {
-				renderDeck(list, child, state, handlers, options, 0, null);
+				deckSibling += 1;
+				renderDeck(
+					list,
+					child,
+					state,
+					handlers,
+					options,
+					0,
+					deckSibling,
+				);
 			} else {
 				cardSibling += 1;
 				renderLeaf(list, child, state, handlers, options, cardSibling);
@@ -258,9 +268,8 @@ function renderDeck(
 		cls: 'dta-sync-name',
 		text: formatDeckLabel(
 			deck.name,
-			depth,
 			siblingIndex ?? deck.siblingIndex ?? null,
-			options.showDeckNumbers !== false,
+			options.showDeckNumbers === true,
 		),
 	});
 	nameEl.setAttribute(
@@ -560,11 +569,10 @@ function renderCard(
 
 function formatDeckLabel(
 	name: string,
-	depth: number,
 	siblingIndex: number | null,
 	showDeckNumbers: boolean,
 ): string {
-	if (depth === 0 || siblingIndex === null || !showDeckNumbers) {
+	if (!showDeckNumbers || siblingIndex === null || siblingIndex < 1) {
 		return name;
 	}
 	return `${siblingIndex}. ${name}`;

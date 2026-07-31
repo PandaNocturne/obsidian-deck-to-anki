@@ -8,7 +8,11 @@ import type {
 	SyncTreeChild,
 } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
-import { toAnkiDeckName } from './backlink';
+import {
+	toAnkiDeckName,
+	toAnkiDeckNameForCard,
+	toAnkiDeckNameForDeck,
+} from './backlink';
 import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
@@ -22,6 +26,10 @@ import {
 	type DeckTemplateId,
 } from './templates';
 import { assignSiblingIndexes } from '../domain/head/siblingIndex';
+
+function deckNumberingFromSettings(settings: DeckToAnkiSettings): boolean {
+	return settings.deckNumberingEnabled !== false;
+}
 
 export interface AnkiComparablePayload {
 	deckName: string;
@@ -110,34 +118,55 @@ export function collectLocalCards(node: DeckNode | CardNode): CardNode[] {
 	return out;
 }
 
-function collectDeckPaths(node: DeckNode, into: Set<string>): void {
-	const path = toAnkiDeckName(node.deckPath);
-	if (path) {
-		into.add(path);
+function collectDeckPaths(
+	node: DeckNode,
+	into: Set<string>,
+	deckNumbering: boolean,
+): void {
+	const numbered = toAnkiDeckNameForDeck(node, deckNumbering);
+	if (numbered) {
+		into.add(numbered);
+	}
+	// Also scan plain names so notes still in old (unnumbered) decks are found.
+	if (deckNumbering) {
+		const plain = toAnkiDeckName(node.deckPath);
+		if (plain) {
+			into.add(plain);
+		}
 	}
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
-			collectDeckPaths(child, into);
+			collectDeckPaths(child, into, deckNumbering);
 		} else if (child.kind === 'card') {
-			const cardDeck = toAnkiDeckName(child.deckPath);
+			const cardDeck = toAnkiDeckNameForCard(child, deckNumbering);
 			if (cardDeck) {
 				into.add(cardDeck);
+			}
+			if (deckNumbering) {
+				const plain = toAnkiDeckName(child.deckPath);
+				if (plain) {
+					into.add(plain);
+				}
 			}
 		}
 	}
 }
 
-function findDeckByPath(root: DeckNode, deckPath: string): DeckNode | null {
+function findDeckByPath(
+	root: DeckNode,
+	deckPath: string,
+	deckNumbering: boolean,
+): DeckNode | null {
 	const target = toAnkiDeckName(deckPath);
 	if (!target) {
 		return null;
 	}
-	if (toAnkiDeckName(root.deckPath) === target) {
+	if (toAnkiDeckNameForDeck(root, deckNumbering) === target) {
 		return root;
 	}
 	for (const child of root.children) {
 		if (child.kind === 'deck') {
-			const hit = findDeckByPath(child, target);
+			const hit = findDeckByPath(child, target, deckNumbering);
 			if (hit) {
 				return hit;
 			}
@@ -147,14 +176,18 @@ function findDeckByPath(root: DeckNode, deckPath: string): DeckNode | null {
 }
 
 /** Longest matching ancestor deck, or root. */
-function findClosestDeck(root: DeckNode, deckPath: string): DeckNode {
+function findClosestDeck(
+	root: DeckNode,
+	deckPath: string,
+	deckNumbering: boolean,
+): DeckNode {
 	const target = toAnkiDeckName(deckPath);
 	const parts = target.split('::').filter(Boolean);
 	let best: DeckNode = root;
 	let prefix = '';
 	for (const part of parts) {
 		prefix = prefix ? `${prefix}::${part}` : part;
-		const hit = findDeckByPath(root, prefix);
+		const hit = findDeckByPath(root, prefix, deckNumbering);
 		if (hit) {
 			best = hit;
 		}
@@ -317,11 +350,12 @@ async function attachDeletedPhantoms(
 	orphanIds: number[],
 	noteDeckHint: Map<number, string>,
 	onProgress?: SyncStatusProgressHandler,
-	progress?: { offset: number; total: number },
+	progress?: { offset: number; total: number; deckNumbering?: boolean },
 ): Promise<number> {
 	if (orphanIds.length === 0) {
 		return 0;
 	}
+	const deckNumbering = progress?.deckNumbering !== false;
 	const CHUNK = 50;
 	const orphanChunks = Math.max(1, Math.ceil(orphanIds.length / CHUNK));
 	const offset = progress?.offset ?? 0;
@@ -367,7 +401,7 @@ async function attachDeletedPhantoms(
 			deckPath,
 			syncStatus: 'deleted',
 		};
-		const parent = findClosestDeck(root, deckPath);
+		const parent = findClosestDeck(root, deckPath, deckNumbering);
 		parent.children.push(phantom);
 		deletedCount += 1;
 	}
@@ -475,9 +509,10 @@ function lookupStatus(
 export function restoreSyncStatusTree(
 	root: DeckNode,
 	snapshot: SyncStatusTreeSnapshot,
-	options?: { removedDeletedNoteIds?: number[] },
+	options?: { removedDeletedNoteIds?: number[]; deckNumbering?: boolean },
 ): void {
 	clearDeletedChildren(root);
+	const deckNumbering = options?.deckNumbering !== false;
 
 	const byKey = new Map<string, SyncCardStatus>();
 	for (const entry of snapshot.cards) {
@@ -505,7 +540,7 @@ export function restoreSyncStatusTree(
 		if (removed.has(phantom.noteId) || localIds.has(phantom.noteId)) {
 			continue;
 		}
-		const parent = findClosestDeck(root, phantom.deckPath);
+		const parent = findClosestDeck(root, phantom.deckPath, deckNumbering);
 		parent.children.push({
 			...phantom,
 			id: `deleted:${phantom.noteId}`,
@@ -680,11 +715,18 @@ export async function prefetchSyncStatusForCards(
 	);
 	const root = options?.root;
 
+	const deckNumbering = deckNumberingFromSettings(settings);
 	const deckPaths = [
 		...new Set(
 			cards
-				.map((c) => toAnkiDeckName(c.deckPath))
-				.filter((p) => p.length > 0),
+				.flatMap((c) => {
+					const numbered = toAnkiDeckNameForCard(c, deckNumbering);
+					if (!deckNumbering) {
+						return numbered ? [numbered] : [];
+					}
+					const plain = toAnkiDeckName(c.deckPath);
+					return [numbered, plain].filter((p) => p.length > 0);
+				}),
 		),
 	];
 	const scanSteps = root
@@ -761,7 +803,11 @@ export async function prefetchSyncStatusForCards(
 			orphanIds,
 			noteDeckHint,
 			onProgress,
-			{ offset: step, total },
+			{
+				offset: step,
+				total,
+				deckNumbering: deckNumberingFromSettings(settings),
+			},
 		);
 		recountLocalCards(root);
 		assignSiblingIndexes(root);
@@ -797,7 +843,7 @@ export async function prefetchSyncStatus(
 	}
 
 	const deckPaths = new Set<string>();
-	collectDeckPaths(root, deckPaths);
+	collectDeckPaths(root, deckPaths, deckNumberingFromSettings(settings));
 	const sortedDeckPaths = [...deckPaths].sort(
 		(a, b) => b.split('::').length - a.split('::').length,
 	);
@@ -857,7 +903,11 @@ export async function prefetchSyncStatus(
 		orphanIds,
 		noteDeckHint,
 		onProgress,
-		{ offset: step, total },
+		{
+			offset: step,
+			total,
+			deckNumbering: deckNumberingFromSettings(settings),
+		},
 	);
 	if (orphanIds.length === 0) {
 		await reportProgress(onProgress, total, total, '整理结果…');

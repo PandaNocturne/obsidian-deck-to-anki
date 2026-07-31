@@ -3,7 +3,7 @@ import type { DeckToAnkiSettings } from '../settings';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode, DeckNode } from '../domain/head/types';
 import { AnkiConnectClient } from './AnkiConnectClient';
-import { resolveSourceFile, toAnkiDeckName } from './backlink';
+import { resolveSourceFile } from './backlink';
 import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
 import { cleanupEmptyAnkiDecks } from './cleanupEmptyDecks';
 import { ensureDeckTemplateModel } from './ensureModel';
@@ -274,16 +274,16 @@ export async function syncCardToAnki(
 	// Existing models must gain the new field names before any note sync.
 	await ensureDeckTemplateModel(client, templateId, style, false);
 
-	const deckName = toAnkiDeckName(card.deckPath);
+	const payload = await buildAnkiNoteFieldPayload(app, settings, card, {
+		mediaCache: options?.mediaCache,
+		freshNoteContent: true,
+	});
+	const deckName = payload.deckName;
 	if (!deckName) {
 		throw new Error('牌组路径为空，无法同步');
 	}
 	await client.createDeck(deckName);
 
-	const payload = await buildAnkiNoteFieldPayload(app, settings, card, {
-		mediaCache: options?.mediaCache,
-		freshNoteContent: true,
-	});
 	if (payload.assets.length > 0) {
 		await client.storeMediaFiles(payload.assets);
 	}

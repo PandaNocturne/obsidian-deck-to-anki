@@ -548,6 +548,7 @@ export class SyncPanelUI {
 		if (statusSnapshot && this.viewRoot) {
 			restoreSyncStatusTree(this.viewRoot, statusSnapshot, {
 				removedDeletedNoteIds: options?.removedDeletedNoteIds,
+				deckNumbering: this.plugin.settings.deckNumberingEnabled !== false,
 			});
 
 			const recheckKeys = options?.recheckKeys ?? [];

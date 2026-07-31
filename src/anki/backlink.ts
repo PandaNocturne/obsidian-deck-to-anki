@@ -27,13 +27,79 @@ export function formatDeckTree(deckPath: string): string {
 		.join(' > ');
 }
 
-/** Anki deck name uses `::` (same as our deckPath). */
-export function toAnkiDeckName(deckPath: string): string {
-	return deckPath
+/**
+ * Anki deck name uses `::`.
+ * When deck numbering is on, sibling indexes prefix each numbered segment
+ * (file root without an index stays plain), e.g.
+ * `Note::1. Sub::2. Leaf`.
+ */
+export function toAnkiDeckName(
+	deckPath: string,
+	options?: {
+		deckNumbering?: boolean;
+		/** Indexes aligned to the end of deckPath segments (excludes unnumbered root). */
+		deckIndexPath?: number[];
+	},
+): string {
+	const parts = deckPath
 		.split('::')
 		.map((part) => part.trim())
-		.filter(Boolean)
+		.filter(Boolean);
+	if (
+		!options?.deckNumbering ||
+		!options.deckIndexPath?.length ||
+		parts.length === 0
+	) {
+		return parts.join('::');
+	}
+	const indexes = options.deckIndexPath;
+	const offset = Math.max(0, parts.length - indexes.length);
+	return parts
+		.map((name, i) => {
+			const idx = i - offset;
+			const n = idx >= 0 ? indexes[idx] : undefined;
+			if (n === undefined || n < 1) {
+				return name;
+			}
+			if (/^\d+\.\s+/.test(name)) {
+				return name;
+			}
+			return `${n}. ${name}`;
+		})
 		.join('::');
+}
+
+/** Numbered Anki deck path for a card (uses card.deckIndexPath). */
+export function toAnkiDeckNameForCard(
+	card: Pick<CardNode, 'deckPath' | 'deckIndexPath'>,
+	deckNumbering: boolean,
+): string {
+	return toAnkiDeckName(card.deckPath, {
+		deckNumbering,
+		deckIndexPath: card.deckIndexPath,
+	});
+}
+
+/**
+ * Numbered Anki deck path for a deck node.
+ * deckIndexPath on the node is ancestors only — append siblingIndex.
+ */
+export function toAnkiDeckNameForDeck(
+	deck: {
+		deckPath: string;
+		deckIndexPath?: number[];
+		siblingIndex?: number;
+	},
+	deckNumbering: boolean,
+): string {
+	const path = [...(deck.deckIndexPath ?? [])];
+	if (deck.siblingIndex !== undefined && deck.siblingIndex > 0) {
+		path.push(deck.siblingIndex);
+	}
+	return toAnkiDeckName(deck.deckPath, {
+		deckNumbering,
+		deckIndexPath: path,
+	});
 }
 
 /**

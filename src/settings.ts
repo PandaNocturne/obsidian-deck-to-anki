@@ -337,7 +337,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(section)
 			.setName('同步牌组编号')
 			.setDesc(
-				'将牌组同级序号写入 Anki（正面前缀 / 牌组树，如 1.2. ）。YAML: deckNumbering。默认开启。',
+				'将牌组同级序号显示在同步树，并写入 Anki 的 ob-deck-tree（如 1. 牌组）。不写入卡片标题/正文。YAML: deckNumbering。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle

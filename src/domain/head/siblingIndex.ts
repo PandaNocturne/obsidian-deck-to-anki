@@ -8,8 +8,8 @@ import type {
 /**
  * Assign 1-based sibling indexes under each deck:
  * - decks numbered among deck siblings
- * - cards / deleted phantoms numbered among leaf siblings
- * Also stores ancestor deck index path on cards for Anki prefixes.
+ * - cards / deleted phantoms keep leaf sibling indexes for UI order only
+ * Also stores ancestor deck index path on cards for Anki tree crumbs.
  */
 export function assignSiblingIndexes(root: DeckNode): void {
 	const walk = (deck: DeckNode, ancestorDeckIndexes: number[]): void => {
@@ -35,18 +35,7 @@ export function assignSiblingIndexes(root: DeckNode): void {
 	walk(root, []);
 }
 
-/** `1.2. ` from ancestor deck sibling indexes (cards themselves are not numbered). */
-export function formatCardNumberPrefix(
-	card: CardNode,
-	options: { deckNumbering: boolean },
-): string {
-	if (!options.deckNumbering || !card.deckIndexPath?.length) {
-		return '';
-	}
-	return `${card.deckIndexPath.join('.')}. `;
-}
-
-/** Prefix backlink crumb labels with deck sibling indexes when enabled. */
+/** Prefix deck-tree crumb labels with sibling indexes when enabled. */
 export function numberBacklinkSegmentNames(
 	names: string[],
 	deckIndexPath: number[] | undefined,

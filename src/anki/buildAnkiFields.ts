@@ -3,7 +3,6 @@ import type { DeckToAnkiSettings } from '../settings';
 import { parseFrontmatter } from '../domain/head/frontmatter';
 import type { CardNode } from '../domain/head/types';
 import {
-	formatCardNumberPrefix,
 	numberBacklinkSegmentNames,
 } from '../domain/head/siblingIndex';
 import {
@@ -13,7 +12,7 @@ import {
 	buildDeckSegmentUris,
 	cardBacklinkLabel,
 	resolveSourceFile,
-	toAnkiDeckName,
+	toAnkiDeckNameForCard,
 	type BacklinkScheme,
 } from './backlink';
 import type { MediaCompressCache } from './mediaCompressCache';
@@ -133,7 +132,8 @@ export async function buildAnkiNoteFieldPayload(
 		meta.deckTemplate,
 		settings.deckTemplate,
 	);
-	const deckName = toAnkiDeckName(card.deckPath);
+	const numbering = resolveNumberingOptions(meta, settings);
+	const deckName = toAnkiDeckNameForCard(card, numbering.deckNumbering);
 
 	const { headMarkdown, frontMarkdown } = splitCardHeadAndFront(card);
 	const mediaOpts = mediaOptions(settings, options?.mediaCache);
@@ -144,17 +144,10 @@ export async function buildAnkiNoteFieldPayload(
 		renderFieldWithMedia(app, card.back, filePath, mediaOpts),
 	]);
 
-	const numbering = resolveNumberingOptions(meta, settings);
-	const numberPrefix = formatCardNumberPrefix(card, numbering);
-
 	const headText = headMarkdown ? escapeHtml(headMarkdown) : '';
-	const headField = headText
-		? `${numberPrefix}${headText}`
-		: numberPrefix && !front.html
-			? numberPrefix.trim()
-			: '';
-	const frontField =
-		!headText && numberPrefix ? `${numberPrefix}${front.html}` : front.html;
+	// Deck numbering is applied to Anki deck path + ob-deck-tree, not card body.
+	const headField = headText;
+	const frontField = front.html;
 
 	let warning: string | undefined;
 	let treeHtml = '';
