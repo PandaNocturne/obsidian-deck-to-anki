@@ -45,30 +45,36 @@ if you want to view the source, please visit the github repository of this plugi
   margin: 0 0 0.35rem;
 }
 .deck-to-anki-settings .dta-settings-section {
-  margin: 0 0 0.85rem;
-  padding: 0.85rem 1rem 0.55rem;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 10px;
-  background: var(--background-secondary);
+  margin: 0 0 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.deck-to-anki-settings .dta-settings-section + .dta-settings-section {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--background-modifier-border);
 }
 .deck-to-anki-settings .dta-settings-panel > .dta-settings-section:last-child {
-  margin-bottom: 0;
+  margin-bottom: 0.35rem;
 }
 .deck-to-anki-settings .dta-settings-section-title {
-  margin: 0 0 0.25rem;
-  font-size: 1.05em;
+  margin: 0 0 0.45rem;
+  padding: 0;
+  font-size: 1.15em;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--text-normal);
 }
 .deck-to-anki-settings .dta-settings-section-desc {
-  margin: 0 0 0.65rem;
+  margin: 0 0 0.75rem;
   color: var(--text-muted);
   font-size: 0.85em;
   line-height: 1.4;
 }
 .deck-to-anki-settings .setting-item {
   border-top: none;
-  padding: 0.55rem 0;
+  padding: var(--size-4-4);
 }
 .deck-to-anki-settings h4 {
   margin: 0.65rem 0 0.25rem;

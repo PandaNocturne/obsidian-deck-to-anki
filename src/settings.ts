@@ -143,8 +143,8 @@ export function mergeSettings(
 
 	const customIds = Array.isArray(base.customDeckTemplates)
 		? base.customDeckTemplates
-				.map((id) => sanitizeDeckTemplateId(String(id)))
-				.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id))
+			.map((id) => sanitizeDeckTemplateId(String(id)))
+			.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id))
 		: [];
 	base.customDeckTemplates = [...new Set(customIds)];
 	base.deckTemplateOrder = normalizeDeckTemplateOrder(
@@ -442,9 +442,9 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(section)
-			.setName('正面包含标题')
+			.setName('Head 兼容模式：正面含标题')
 			.setDesc(
-				'Head 模式且卡片含 --- 时：开启则标题写入正面；关闭则正面仅为 --- 上方正文。',
+				'Head 模式含 --- 时自动按 Card 解析。开启则正面包含标题；关闭则正面仅为 --- 上方正文。',
 			)
 			.addToggle((toggle) =>
 				toggle
@@ -456,7 +456,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(section)
-			.setName('Deck View 默认模式')
+			.setName('Deck View 默认视图')
 			.setDesc('从卡片打开 Deck View 时：源码或阅读。')
 			.addDropdown((dropdown) =>
 				dropdown
@@ -472,8 +472,8 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		const yamlSection = this.beginSection(
 			containerEl,
-			'笔记 YAML',
-			'单篇笔记 frontmatter 使用 camelCase 字段（可覆盖插件默认）。',
+			'YAML',
+			'YAML 字段与解析结果对应关系。',
 		);
 		const yamlList = yamlSection.createEl('ul', {
 			cls: 'dta-yaml-field-list',
