@@ -1,4 +1,4 @@
-import { App, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { App, Notice, PluginSettingTab, Setting, TextAreaComponent } from 'obsidian';
 import type DeckToAnkiPlugin from '../main';
 import type { MediaCompressCache } from './anki/mediaCompressCache';
 import type { MediaProcessOptions } from './anki/processMedia';
@@ -380,6 +380,21 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			'仅压缩上传到 Anki 的图片，不修改库内源文件。',
 		);
 
+		let qualitySlider: { setValue: (v: number) => unknown } | undefined;
+		let cacheSetting: Setting | undefined;
+
+		const syncMediaVisibility = (): void => {
+			const on = this.plugin.settings.mediaCompressEnabled !== false;
+			qualitySetting.settingEl.toggle(on);
+			cacheSetting?.settingEl.toggle(on);
+		};
+
+		const refreshCacheDesc = (): void => {
+			cacheSetting?.setDesc(
+				`按文件内容 hash + 质量缓存，保证同步与状态对比文件名一致。当前 ${this.plugin.mediaCompressCache.size} 条。`,
+			);
+		};
+
 		new Setting(section)
 			.setName('图片压缩')
 			.setDesc(
@@ -391,18 +406,15 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.mediaCompressEnabled = value;
 						await this.plugin.saveSettings();
-						this.display();
+						syncMediaVisibility();
 					}),
 			);
 
-		if (this.plugin.settings.mediaCompressEnabled === false) {
-			return;
-		}
-
-		new Setting(section)
+		const qualitySetting = new Setting(section)
 			.setName('压缩质量')
 			.setDesc('JPEG 质量 1–100，默认 75。越低体积越小、画质越低。')
-			.addSlider((slider) =>
+			.addSlider((slider) => {
+				qualitySlider = slider;
 				slider
 					.setLimits(1, 100, 1)
 					.setValue(this.plugin.settings.mediaCompressQuality ?? 75)
@@ -410,32 +422,31 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.mediaCompressQuality = value;
 						await this.plugin.saveSettings();
-					}),
-			)
+					});
+			})
 			.addExtraButton((btn) =>
 				btn
 					.setIcon('reset')
 					.setTooltip('恢复默认 75')
 					.onClick(async () => {
 						this.plugin.settings.mediaCompressQuality = 75;
+						qualitySlider?.setValue(75);
 						await this.plugin.saveSettings();
-						this.display();
 					}),
 			);
 
-		new Setting(section)
+		cacheSetting = new Setting(section)
 			.setName('压缩缓存')
-			.setDesc(
-				`按文件内容 hash + 质量缓存，保证同步与状态对比文件名一致。当前 ${this.plugin.mediaCompressCache.size} 条。`,
-			)
 			.addButton((btn) =>
 				btn.setButtonText('清空缓存').onClick(async () => {
 					this.plugin.mediaCompressCache.clear();
 					await this.plugin.mediaCompressCache.saveNow();
 					new Notice('已清空图片压缩缓存');
-					this.display();
+					refreshCacheDesc();
 				}),
 			);
+		refreshCacheDesc();
+		syncMediaVisibility();
 	}
 
 	private renderTemplateSettings(containerEl: HTMLElement): void {
@@ -445,7 +456,55 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			'默认 Anki 笔记类型与 Front / Back / CSS；可强制推送到 Anki。',
 		);
 
-		new Setting(section)
+		const templateId = this.plugin.settings.deckTemplate;
+		const style = this.plugin.settings.deckTemplateStyles[templateId];
+
+		const headingEl = section.createEl('h4', {
+			text: `样式 · ${DECK_TEMPLATE_LABELS[templateId] ?? templateId}`,
+		});
+
+		const frontArea = this.addTemplateTextArea(
+			section,
+			'正面模板',
+			'Anki 卡片正面 HTML（可用 {{ob-deck-head}} {{ob-deck-front}} {{ob-deck-back}} {{ob-deck-tags}} {{ob-deck-tree}} {{ob-deck-backlink}}）',
+			style.front,
+			async (value) => {
+				const id = this.plugin.settings.deckTemplate;
+				this.plugin.settings.deckTemplateStyles[id].front = value;
+				await this.plugin.saveSettings();
+			},
+		);
+
+		const backArea = this.addTemplateTextArea(
+			section,
+			'背面模板',
+			'Anki 卡片背面 HTML',
+			style.back,
+			async (value) => {
+				const id = this.plugin.settings.deckTemplate;
+				this.plugin.settings.deckTemplateStyles[id].back = value;
+				await this.plugin.saveSettings();
+			},
+		);
+
+		const cssArea = this.addTemplateTextArea(
+			section,
+			'卡片 CSS',
+			'笔记类型 CSS（仅首次创建或强制更新时同步到 Anki）',
+			style.css,
+			async (value) => {
+				const id = this.plugin.settings.deckTemplate;
+				this.plugin.settings.deckTemplateStyles[id].css = value;
+				await this.plugin.saveSettings();
+			},
+			12,
+		);
+
+		// Insert template picker above the style editors.
+		const pickerHost = section.createDiv();
+		section.insertBefore(pickerHost, headingEl);
+
+		new Setting(pickerHost)
 			.setName('默认笔记类型')
 			.setDesc(
 				'笔记 YAML 无 deckTemplate 时使用。可在牌组设置中按笔记覆盖。',
@@ -457,56 +516,18 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				dropdown
 					.setValue(this.plugin.settings.deckTemplate)
 					.onChange(async (value) => {
-						this.plugin.settings.deckTemplate =
-							value as DeckTemplateId;
+						const id = value as DeckTemplateId;
+						this.plugin.settings.deckTemplate = id;
 						await this.plugin.saveSettings();
-						this.display();
+						const next = this.plugin.settings.deckTemplateStyles[id];
+						headingEl.setText(
+							`样式 · ${DECK_TEMPLATE_LABELS[id] ?? id}`,
+						);
+						frontArea.setValue(next.front);
+						backArea.setValue(next.back);
+						cssArea.setValue(next.css);
 					});
 			});
-
-		const templateId = this.plugin.settings.deckTemplate;
-		const style = this.plugin.settings.deckTemplateStyles[templateId];
-
-		section.createEl('h4', {
-			text: `样式 · ${DECK_TEMPLATE_LABELS[templateId] ?? templateId}`,
-		});
-
-		this.addTemplateTextArea(
-			section,
-			'正面模板',
-			'Anki 卡片正面 HTML（可用 {{ob-deck-head}} {{ob-deck-front}} {{ob-deck-back}} {{ob-deck-tags}} {{ob-deck-tree}} {{ob-deck-backlink}}）',
-			style.front,
-			async (value) => {
-				this.plugin.settings.deckTemplateStyles[templateId].front =
-					value;
-				await this.plugin.saveSettings();
-			},
-		);
-
-		this.addTemplateTextArea(
-			section,
-			'背面模板',
-			'Anki 卡片背面 HTML',
-			style.back,
-			async (value) => {
-				this.plugin.settings.deckTemplateStyles[templateId].back =
-					value;
-				await this.plugin.saveSettings();
-			},
-		);
-
-		this.addTemplateTextArea(
-			section,
-			'卡片 CSS',
-			'笔记类型 CSS（仅首次创建或强制更新时同步到 Anki）',
-			style.css,
-			async (value) => {
-				this.plugin.settings.deckTemplateStyles[templateId].css =
-					value;
-				await this.plugin.saveSettings();
-			},
-			12,
-		);
 
 		new Setting(section)
 			.setName('强制更新模板到 Anki')
@@ -519,15 +540,16 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.setCta()
 					.onClick(async () => {
 						btn.setDisabled(true);
+						const id = this.plugin.settings.deckTemplate;
 						try {
 							const result = await forceUpdateDeckTemplate(
 								this.plugin.settings,
 								() => this.plugin.saveSettings(),
 							);
 							if (result === 'created') {
-								new Notice(`已创建笔记类型 ${templateId}`);
+								new Notice(`已创建笔记类型 ${id}`);
 							} else {
-								new Notice(`已强制更新 ${templateId} 的样式`);
+								new Notice(`已强制更新 ${id} 的样式`);
 							}
 						} catch (error) {
 							const msg =
@@ -576,99 +598,56 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			'ob-deck-backlink：定位当前卡片 · ob-deck-tree：牌组树。',
 		);
 
-		new Setting(section)
-			.setName('卡片回链（ob-deck-backlink）')
+		const linkTextSetting = new Setting(section)
+			.setName('回链链接文本')
 			.setDesc(
-				'写入定位到当前卡片的链接：Head → 标题，List → 块（^id），Card → 文件。默认开启。',
+				'Auto：自动识别（标题 / ^块 ID / 打开笔记）；Custom：使用下方固定文案。',
+			)
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('auto', 'Auto')
+					.addOption('custom', 'Custom')
+					.setValue(this.plugin.settings.backlinkLinkTextMode)
+					.onChange(async (value) => {
+						this.plugin.settings.backlinkLinkTextMode =
+							value === 'custom' ? 'custom' : 'auto';
+						await this.plugin.saveSettings();
+						syncCustomVisibility();
+					}),
+			);
+
+		const customTextSetting = new Setting(section)
+			.setName('Custom 链接文本')
+			.setDesc('卡片回链锚点文字。默认为 backlink。')
+			.addText((text) =>
+				text
+					.setPlaceholder('backlink')
+					.setValue(this.plugin.settings.backlinkLinkText)
+					.onChange(async (value) => {
+						const next = value.trim() || 'backlink';
+						this.plugin.settings.backlinkLinkText = next;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		const treeLinkSetting = new Setting(section)
+			.setName('牌组树回链')
+			.setDesc(
+				'开启后牌组树各段可点击跳转（使用下方协议）。关闭则仅显示文字。',
 			)
 			.addToggle((toggle) =>
 				toggle
 					.setValue(
-						this.plugin.settings.deckCardBacklinkEnabled !== false,
+						this.plugin.settings.deckTreeLinkEnabled !== false,
 					)
 					.onChange(async (value) => {
-						this.plugin.settings.deckCardBacklinkEnabled = value;
+						this.plugin.settings.deckTreeLinkEnabled = value;
 						await this.plugin.saveSettings();
-						this.display();
+						syncCustomVisibility();
 					}),
 			);
 
-		if (this.plugin.settings.deckCardBacklinkEnabled !== false) {
-			new Setting(section)
-				.setName('回链链接文本')
-				.setDesc(
-					'Auto：自动识别（标题 / ^块 ID / 打开笔记）；Custom：使用下方固定文案。',
-				)
-				.addDropdown((dropdown) =>
-					dropdown
-						.addOption('auto', 'Auto')
-						.addOption('custom', 'Custom')
-						.setValue(this.plugin.settings.backlinkLinkTextMode)
-						.onChange(async (value) => {
-							this.plugin.settings.backlinkLinkTextMode =
-								value === 'custom' ? 'custom' : 'auto';
-							await this.plugin.saveSettings();
-							this.display();
-						}),
-				);
-
-			if (this.plugin.settings.backlinkLinkTextMode === 'custom') {
-				new Setting(section)
-					.setName('Custom 链接文本')
-					.setDesc('卡片回链锚点文字。默认为 backlink。')
-					.addText((text) =>
-						text
-							.setPlaceholder('backlink')
-							.setValue(this.plugin.settings.backlinkLinkText)
-							.onChange(async (value) => {
-								const next = value.trim() || 'backlink';
-								this.plugin.settings.backlinkLinkText = next;
-								await this.plugin.saveSettings();
-							}),
-					);
-			}
-		}
-
-		new Setting(section)
-			.setName('牌组树（ob-deck-tree）')
-			.setDesc('写入牌组路径 crumbs（一级 > 牌组2 > …）。默认开启。')
-			.addToggle((toggle) =>
-				toggle
-					.setValue(this.plugin.settings.deckTreeEnabled !== false)
-					.onChange(async (value) => {
-						this.plugin.settings.deckTreeEnabled = value;
-						await this.plugin.saveSettings();
-						this.display();
-					}),
-			);
-
-		if (this.plugin.settings.deckTreeEnabled !== false) {
-			new Setting(section)
-				.setName('牌组树回链')
-				.setDesc(
-					'开启后牌组树各段可点击跳转（使用下方协议）。关闭则仅显示文字。',
-				)
-				.addToggle((toggle) =>
-					toggle
-						.setValue(
-							this.plugin.settings.deckTreeLinkEnabled !== false,
-						)
-						.onChange(async (value) => {
-							this.plugin.settings.deckTreeLinkEnabled = value;
-							await this.plugin.saveSettings();
-						}),
-				);
-		}
-
-		const needScheme =
-			this.plugin.settings.deckCardBacklinkEnabled !== false ||
-			(this.plugin.settings.deckTreeEnabled !== false &&
-				this.plugin.settings.deckTreeLinkEnabled !== false);
-		if (!needScheme) {
-			return;
-		}
-
-		new Setting(section)
+		const schemeSetting = new Setting(section)
 			.setName('回链协议')
 			.setDesc(
 				'用于卡片回链与牌组树链接。none：无跳转；oburi：核心 URI；aduri：Advanced URI。',
@@ -683,27 +662,80 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						this.plugin.settings.backlinkScheme =
 							value as BacklinkScheme;
 						await this.plugin.saveSettings();
-						this.display();
+						syncCustomVisibility();
 					}),
 			);
 
-		if (this.plugin.settings.backlinkScheme === 'aduri') {
-			new Setting(section)
-				.setName('Advanced URI uid 属性名')
-				.setDesc(
-					'从笔记 YAML 读取 uid。head/list/card 分别用标题、块、仅文件定位。',
-				)
-				.addText((text) =>
-					text
-						.setPlaceholder('uid')
-						.setValue(this.plugin.settings.advUriUidProperty)
-						.onChange(async (value) => {
-							this.plugin.settings.advUriUidProperty =
-								value.trim() || 'uid';
-							await this.plugin.saveSettings();
-						}),
-				);
-		}
+		const uidSetting = new Setting(section)
+			.setName('Advanced URI uid 属性名')
+			.setDesc(
+				'从笔记 YAML 读取 uid。head/list/card 分别用标题、块、仅文件定位。',
+			)
+			.addText((text) =>
+				text
+					.setPlaceholder('uid')
+					.setValue(this.plugin.settings.advUriUidProperty)
+					.onChange(async (value) => {
+						this.plugin.settings.advUriUidProperty =
+							value.trim() || 'uid';
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		const syncCustomVisibility = (): void => {
+			const cardOn =
+				this.plugin.settings.deckCardBacklinkEnabled !== false;
+			const treeOn = this.plugin.settings.deckTreeEnabled !== false;
+			const customMode =
+				this.plugin.settings.backlinkLinkTextMode === 'custom';
+			const treeLinkOn =
+				this.plugin.settings.deckTreeLinkEnabled !== false;
+			const needScheme = cardOn || (treeOn && treeLinkOn);
+			const aduri = this.plugin.settings.backlinkScheme === 'aduri';
+
+			linkTextSetting.settingEl.toggle(cardOn);
+			customTextSetting.settingEl.toggle(cardOn && customMode);
+			treeLinkSetting.settingEl.toggle(treeOn);
+			schemeSetting.settingEl.toggle(needScheme);
+			uidSetting.settingEl.toggle(needScheme && aduri);
+		};
+
+		// Parent toggles first in DOM order (insert before dependents).
+		const cardHost = section.createDiv();
+		section.insertBefore(cardHost, linkTextSetting.settingEl);
+		new Setting(cardHost)
+			.setName('卡片回链（ob-deck-backlink）')
+			.setDesc(
+				'写入定位到当前卡片的链接：Head → 标题，List → 块（^id），Card → 文件。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(
+						this.plugin.settings.deckCardBacklinkEnabled !== false,
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.deckCardBacklinkEnabled = value;
+						await this.plugin.saveSettings();
+						syncCustomVisibility();
+					}),
+			);
+
+		const treeHost = section.createDiv();
+		section.insertBefore(treeHost, treeLinkSetting.settingEl);
+		new Setting(treeHost)
+			.setName('牌组树（ob-deck-tree）')
+			.setDesc('写入牌组路径 crumbs（一级 > 牌组2 > …）。默认开启。')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckTreeEnabled !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.deckTreeEnabled = value;
+						await this.plugin.saveSettings();
+						syncCustomVisibility();
+					}),
+			);
+
+		syncCustomVisibility();
 	}
 
 	private addTemplateTextArea(
@@ -713,15 +745,18 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		value: string,
 		onChange: (value: string) => Promise<void>,
 		rows = 6,
-	): void {
+	): TextAreaComponent {
 		const setting = new Setting(containerEl).setName(name).setDesc(desc);
 		setting.settingEl.addClass('dta-setting-textarea');
+		let area!: TextAreaComponent;
 		setting.addTextArea((text) => {
+			area = text;
 			text.setValue(value).onChange((v) => {
 				void onChange(v);
 			});
 			text.inputEl.rows = rows;
 			text.inputEl.addClass('dta-template-textarea');
 		});
+		return area;
 	}
 }
