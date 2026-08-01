@@ -301,10 +301,13 @@ export async function syncCardToAnki(
 		deckTagsEnabled: settings.deckTagsEnabled,
 	});
 
+	// Card mode stores id in YAML `deckID`; head/list use `<!--ID-->` markers.
 	const needsIdWrite =
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
-		!card.idMarker;
+		(card.deckClass === 'card'
+			? card.noteId === undefined
+			: !card.idMarker);
 
 	let pendingIdWrite: PendingIdMarkerWrite | undefined;
 	if (needsIdWrite) {

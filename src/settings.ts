@@ -529,6 +529,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				key: 'deckNumbering',
 				desc: '是否在同步树与 Anki 牌组路径显示序号。',
 			},
+			{
+				key: 'deckID',
+				desc: 'Card 模式：Anki 笔记 ID（同步后写入 YAML，不再写文件底部）。',
+			},
 		];
 		const yamlBody = yamlTable.createEl('tbody');
 		for (const field of yamlFields) {

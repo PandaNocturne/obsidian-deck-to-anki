@@ -13,6 +13,9 @@ const ALL_DECK_YAML_KEYS = new Set([
 	'deckFile',
 	'deckTemplate',
 	'deckNumbering',
+	/** Anki note id for card-mode files (also accepts legacy `deckId`). */
+	'deckID',
+	'deckId',
 	/** Legacy; removed from UI but still stripped when clearing deck YAML. */
 	'cardNumbering',
 ]);
@@ -32,6 +35,8 @@ export interface FrontmatterMeta {
 	deckTemplate?: DeckTemplateId;
 	/** Sync deck sibling indexes into Anki front/tree. */
 	deckNumbering?: boolean;
+	/** Anki note id for card-mode (one file = one card). */
+	deckID?: number;
 	warnings: string[];
 }
 
@@ -123,6 +128,7 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 	let deckFile: string | undefined;
 	let deckTemplate: DeckTemplateId | undefined;
 	let deckNumbering: boolean | undefined;
+	let deckID: number | undefined;
 
 	for (const rawLine of body.split(/\r?\n/)) {
 		const line = rawLine.trim();
@@ -183,6 +189,13 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 			} else if (value) {
 				warnings.push(`无效 deckNumbering: ${value}`);
 			}
+		} else if (key === 'deckID' || key === 'deckId') {
+			const id = Number(value);
+			if (Number.isInteger(id) && id > 0) {
+				deckID = id;
+			} else if (value) {
+				warnings.push(`无效 deckID: ${value}`);
+			}
 		}
 		// Legacy cardNumbering is ignored (cards are never numbered).
 	}
@@ -195,6 +208,7 @@ export function parseFrontmatter(content: string): FrontmatterMeta {
 		deckFile,
 		deckTemplate,
 		deckNumbering,
+		deckID,
 		warnings,
 	};
 }
@@ -292,7 +306,7 @@ function stripEmptyFrontmatter(content: string): string {
 
 /**
  * Remove all deck-related YAML properties (deckType / deckName / deckLevel /
- * deckStatus / deckFile / deckTemplate / deckNumbering).
+ * deckStatus / deckFile / deckTemplate / deckNumbering / deckID).
  * Drops empty frontmatter block.
  */
 export function clearAllDeckYaml(content: string): string {
@@ -302,6 +316,20 @@ export function clearAllDeckYaml(content: string): string {
 		new Set(ALL_DECK_YAML_KEYS),
 	);
 	return stripEmptyFrontmatter(next);
+}
+
+/** Insert or update card-mode Anki note id as YAML `deckID`. */
+export function upsertDeckIdYaml(content: string, noteId: number): string {
+	const id = Math.trunc(noteId);
+	if (!Number.isFinite(id) || id <= 0) {
+		return content;
+	}
+	// Canonical key is deckID; drop legacy deckId if present.
+	return applyFrontmatterUpdates(
+		content,
+		{ deckID: String(id) },
+		new Set(['deckId']),
+	);
 }
 
 /** Remove only `deckFile` (keeps other deck YAML). */

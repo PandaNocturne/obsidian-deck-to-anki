@@ -1,5 +1,6 @@
 import type { App, TFile } from 'obsidian';
-import { createIdMarkerRaw } from '../domain/head/idMarker';
+import { createIdMarkerRaw, ID_MARKER_REGEXP } from '../domain/head/idMarker';
+import { upsertDeckIdYaml } from '../domain/head/frontmatter';
 import type { CardNode } from '../domain/head/types';
 import { resolveSourceFile } from './backlink';
 
@@ -8,9 +9,38 @@ export interface PendingIdMarkerWrite {
 	noteId: number;
 }
 
+const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+
+/**
+ * Remove legacy `<!--ID: n-->` lines from the note body (after YAML).
+ * Used when migrating card-mode ids into YAML `deckID`.
+ */
+function stripLegacyIdMarkersFromBody(content: string): string {
+	const match = content.match(FRONTMATTER_REGEXP);
+	if (!match || match.index === undefined) {
+		return content
+			.split(/\r?\n/)
+			.filter((line) => !ID_MARKER_REGEXP.test(line))
+			.join('\n');
+	}
+	const prefix = content.slice(0, match.index + match[0].length);
+	const body = content.slice(match.index + match[0].length);
+	const cleaned = body
+		.split(/\r?\n/)
+		.filter((line) => !ID_MARKER_REGEXP.test(line))
+		.join('\n')
+		.replace(/^\n+/, '');
+	return `${prefix}${cleaned}`;
+}
+
+function applyCardModeDeckId(content: string, noteId: number): string {
+	return stripLegacyIdMarkersFromBody(upsertDeckIdYaml(content, noteId));
+}
+
 /**
  * Apply one `<!--ID: n-->` edit to an in-memory line array (no vault write).
  * `card.lineEnd` is exclusive. Call bottom-to-top when batching inserts.
+ * Not used for card-mode files (those use YAML `deckID`).
  */
 export function applyCardIdMarkerToLines(
 	lines: string[],
@@ -47,7 +77,9 @@ export function applyCardIdMarkerToLines(
 }
 
 /**
- * Write or replace `<!--ID: n-->` for a single card (one vault modify).
+ * Persist Anki note id for a card:
+ * - card mode → YAML `deckID` (and strip legacy bottom `<!--ID-->`)
+ * - head/list → `<!--ID: n-->` near the card block
  */
 export async function writeCardIdMarker(
 	app: App,
@@ -56,6 +88,13 @@ export async function writeCardIdMarker(
 	noteId: number,
 ): Promise<void> {
 	const content = await app.vault.read(file);
+	if (card.deckClass === 'card') {
+		const next = applyCardModeDeckId(content, noteId);
+		if (next !== content) {
+			await app.vault.modify(file, next);
+		}
+		return;
+	}
 	const lines = content.split(/\r?\n/);
 	applyCardIdMarkerToLines(lines, card, noteId);
 	await app.vault.modify(file, lines.join('\n'));
@@ -90,13 +129,28 @@ export async function writePendingIdMarkers(
 			continue;
 		}
 		const content = await app.vault.read(file);
-		const lines = content.split(/\r?\n/);
-		const sorted = [...items].sort(
-			(a, b) => b.card.lineStart - a.card.lineStart,
-		);
-		for (const { card, noteId } of sorted) {
-			applyCardIdMarkerToLines(lines, card, noteId);
+		const cardMode = items.filter((i) => i.card.deckClass === 'card');
+		const markerMode = items.filter((i) => i.card.deckClass !== 'card');
+
+		let next = content;
+		// Card-mode: one file = one card → YAML deckID.
+		for (const { noteId } of cardMode) {
+			next = applyCardModeDeckId(next, noteId);
 		}
-		await app.vault.modify(file, lines.join('\n'));
+
+		if (markerMode.length > 0) {
+			const lines = next.split(/\r?\n/);
+			const sorted = [...markerMode].sort(
+				(a, b) => b.card.lineStart - a.card.lineStart,
+			);
+			for (const { card, noteId } of sorted) {
+				applyCardIdMarkerToLines(lines, card, noteId);
+			}
+			next = lines.join('\n');
+		}
+
+		if (next !== content) {
+			await app.vault.modify(file, next);
+		}
 	}
 }

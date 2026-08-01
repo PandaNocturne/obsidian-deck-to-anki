@@ -1,6 +1,6 @@
 import type { IdMarkerInfo } from './types';
 
-const ID_MARKER_REGEXP = /^\s*<!--\s*ID:\s*([1-9]\d*)\s*-->\s*$/;
+export const ID_MARKER_REGEXP = /^\s*<!--\s*ID:\s*([1-9]\d*)\s*-->\s*$/;
 
 export function parseIdMarker(line: string, lineIndex: number): IdMarkerInfo | null {
 	const match = line.match(ID_MARKER_REGEXP);

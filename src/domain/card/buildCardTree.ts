@@ -1,5 +1,6 @@
 import { recountCards } from '../head/buildHeadTree';
 import { trailFromPathStack } from '../head/deckBacklinkTrail';
+import { parseFrontmatter } from '../head/frontmatter';
 import { findIdMarkerInLines } from '../head/idMarker';
 import type {
 	CardNode,
@@ -134,6 +135,8 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		sepAbs >= 0
 			? sepAbs + 1
 			: bodyStartLineIndex + body.split(/\r?\n/).length;
+	// Prefer YAML deckID; fall back to legacy <!--ID: n--> at file bottom.
+	const yamlDeckId = parseFrontmatter(content).deckID;
 	const idMarker = findIdMarkerInLines(
 		allLines,
 		Math.max(0, backStart),
@@ -152,6 +155,7 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		}
 	}
 
+	const noteId = yamlDeckId ?? idMarker?.noteId;
 	const card: CardNode = {
 		kind: 'card',
 		id: `card:${filePath}:0:1`,
@@ -163,8 +167,9 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		deckPath,
 		deckClass: 'card',
 		tags: collectCardTags([front, backText], content),
-		noteId: idMarker?.noteId,
-		idMarker: idMarker ?? undefined,
+		noteId,
+		// YAML-backed ids do not use an HTML marker line.
+		idMarker: yamlDeckId !== undefined ? undefined : (idMarker ?? undefined),
 		sourceFilePath: filePath,
 		deckBacklinkTrail:
 			deckBacklinkTrail ??
