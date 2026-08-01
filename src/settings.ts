@@ -1426,7 +1426,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const uidSetting = new Setting(section)
 			.setName('Advanced URI uid 属性名')
 			.setDesc(
-				'从笔记 YAML 读取 uid。head/list/card 分别用标题、块、仅文件定位。',
+				'从笔记 YAML 读取 uid；缺失或为空时自动生成并写入。head/list/card 分别用标题、块、仅文件定位。',
 			)
 			.addText((text) =>
 				text

@@ -1,4 +1,5 @@
 import type { App, TFile } from 'obsidian';
+import { upsertYamlProperty } from '../domain/head/frontmatter';
 import { resolveCardBacklinkTrail } from '../domain/head/deckBacklinkTrail';
 import type {
 	CardNode,
@@ -138,12 +139,60 @@ export function readFrontmatterProperty(
 	}
 	const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	const match = fm.match(
-		new RegExp(`^${escaped}\\s*:\\s*(.+)$`, 'im'),
+		new RegExp(`^${escaped}\\s*:\\s*(.*)$`, 'im'),
 	);
-	if (!match?.[1]) {
+	if (!match) {
 		return null;
 	}
-	return match[1].trim().replace(/^['"]|['"]$/g, '');
+	const value = (match[1] ?? '').trim().replace(/^['"]|['"]$/g, '');
+	return value.length > 0 ? value : null;
+}
+
+/** UUID v4 for Advanced URI `uid` (matches Advanced URI plugin behavior). */
+export function generateAdvUriUid(): string {
+	if (
+		typeof crypto !== 'undefined' &&
+		typeof crypto.randomUUID === 'function'
+	) {
+		return crypto.randomUUID();
+	}
+	return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+		const n = (Math.random() * 16) | 0;
+		const v = ch === 'x' ? n : (n & 0x3) | 0x8;
+		return v.toString(16);
+	});
+}
+
+/**
+ * Ensure the note has a non-empty Advanced URI uid property.
+ * Generates and writes YAML when missing or blank.
+ */
+export async function ensureNoteUid(
+	app: App,
+	filePath: string,
+	uidProperty: string,
+	options?: { content?: string },
+): Promise<{ uid: string; content: string; wrote: boolean } | null> {
+	const file = resolveSourceFile(app, filePath);
+	if (!file) {
+		return null;
+	}
+	const prop = uidProperty.trim() || 'uid';
+	let content =
+		options?.content !== undefined
+			? options.content
+			: await app.vault.read(file);
+	const existing = readFrontmatterProperty(content, prop);
+	if (existing) {
+		return { uid: existing, content, wrote: false };
+	}
+	const uid = generateAdvUriUid();
+	const next = upsertYamlProperty(content, prop, uid);
+	if (next !== content) {
+		await app.vault.modify(file, next);
+		content = next;
+	}
+	return { uid, content, wrote: true };
 }
 
 function buildObUri(
@@ -259,28 +308,40 @@ export function resolveCardBacklinkLinkText(
 	return cardBacklinkLabel(card);
 }
 
-export function buildCardBacklinkUri(options: BuildBacklinkOptions): {
+export async function buildCardBacklinkUri(options: BuildBacklinkOptions): Promise<{
 	uri: string;
 	schemeUsed: BacklinkScheme;
 	warning?: string;
-} {
+	/** Updated note content when uid was auto-written. */
+	noteContent?: string;
+}> {
 	const { app, card, scheme, uidProperty, noteContent } = options;
 	const vaultName = app.vault.getName();
 	const filePath = card.sourceFilePath ?? '';
 	const jump = cardJumpTarget(card);
 
 	if (scheme === 'aduri') {
-		const uid = readFrontmatterProperty(noteContent, uidProperty);
-		if (uid) {
+		if (!filePath) {
 			return {
-				uri: buildAdUri(vaultName, uid, jump),
+				uri: '',
 				schemeUsed: 'aduri',
+				warning: `无法写入 ${uidProperty}：缺少源文件路径`,
+			};
+		}
+		const ensured = await ensureNoteUid(app, filePath, uidProperty, {
+			content: noteContent,
+		});
+		if (ensured?.uid) {
+			return {
+				uri: buildAdUri(vaultName, ensured.uid, jump),
+				schemeUsed: 'aduri',
+				noteContent: ensured.content,
 			};
 		}
 		return {
 			uri: buildObUri(vaultName, filePath, card),
 			schemeUsed: 'oburi',
-			warning: `未找到属性 ${uidProperty}，已回退到 oburi`,
+			warning: `未能写入属性 ${uidProperty}，已回退到 oburi`,
 		};
 	}
 
@@ -302,16 +363,14 @@ async function resolveUidForFile(
 	filePath: string,
 	uidProperty: string,
 	cachedContent?: string,
-): Promise<string | null> {
-	if (cachedContent !== undefined) {
-		return readFrontmatterProperty(cachedContent, uidProperty);
+): Promise<{ uid: string | null; content?: string }> {
+	const ensured = await ensureNoteUid(app, filePath, uidProperty, {
+		content: cachedContent,
+	});
+	if (!ensured) {
+		return { uid: null };
 	}
-	const file = resolveSourceFile(app, filePath);
-	if (!file) {
-		return null;
-	}
-	const content = await app.vault.cachedRead(file);
-	return readFrontmatterProperty(content, uidProperty);
+	return { uid: ensured.uid, content: ensured.content };
 }
 
 /**
@@ -329,8 +388,11 @@ export async function buildDeckSegmentUris(options: {
 }): Promise<{
 	segments: Array<{ name: string; uri?: string }>;
 	warning?: string;
+	/** Updated card-note content when uid was auto-written. */
+	noteContent?: string;
 }> {
-	const { app, card, scheme, uidProperty, noteContent } = options;
+	const { app, card, scheme, uidProperty } = options;
+	let noteContent = options.noteContent;
 	const trail = resolveCardBacklinkTrail(card);
 	const names = trail
 		.map((crumb) => crumb.name.trim())
@@ -358,18 +420,21 @@ export async function buildDeckSegmentUris(options: {
 		if (!crumb.headingTarget && scheme === 'aduri') {
 			const cached =
 				filePath === cardFile ? noteContent : undefined;
-			const uid = await resolveUidForFile(
+			const resolved = await resolveUidForFile(
 				app,
 				filePath,
 				uidProperty,
 				cached,
 			);
-			if (uid) {
-				uri = buildAdUri(vaultName, uid);
+			if (resolved.content && filePath === cardFile) {
+				noteContent = resolved.content;
+			}
+			if (resolved.uid) {
+				uri = buildAdUri(vaultName, resolved.uid);
 			} else {
 				uri = buildDeckSegmentObUri(vaultName, filePath);
 				if (!warning && filePath === cardFile) {
-					warning = `未找到属性 ${uidProperty}，已回退到 oburi`;
+					warning = `未能写入属性 ${uidProperty}，已回退到 oburi`;
 				}
 			}
 		} else {
@@ -384,7 +449,7 @@ export async function buildDeckSegmentUris(options: {
 		segments.push({ name, uri });
 	}
 
-	return { segments, warning };
+	return { segments, warning, noteContent };
 }
 
 export function buildCardBacklinkHtml(

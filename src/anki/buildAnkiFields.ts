@@ -137,13 +137,14 @@ export async function buildAnkiNoteFieldPayload(
 		throw new Error(`找不到源笔记：${filePath}`);
 	}
 
-	const noteContent = options?.freshNoteContent
+	let noteContent = options?.freshNoteContent
 		? await app.vault.read(file)
 		: await app.vault.cachedRead(file);
 	const meta = parseFrontmatter(noteContent);
 	const modelName = resolveDeckTemplate(meta.deckTemplate, settings);
 	const numbering = resolveNumberingOptions(meta, settings);
 	const deckName = toAnkiDeckNameForCard(card, numbering.deckNumbering);
+	const uidProperty = settings.advUriUidProperty || 'uid';
 
 	const { headMarkdown, frontMarkdown } = splitCardHeadAndFront(card);
 	const baseMediaOpts = mediaOptions(settings, options?.mediaCache);
@@ -177,10 +178,13 @@ export async function buildAnkiNoteFieldPayload(
 			app,
 			card,
 			scheme: treeScheme,
-			uidProperty: settings.advUriUidProperty || 'uid',
+			uidProperty,
 			noteContent,
 		});
 		warning = link.warning;
+		if (link.noteContent) {
+			noteContent = link.noteContent;
+		}
 		const numbered = numberBacklinkSegmentNames(
 			link.segments.map((s) => s.name),
 			card.deckIndexPath,
@@ -196,15 +200,18 @@ export async function buildAnkiNoteFieldPayload(
 
 	let cardBacklinkHtml = '';
 	if (settings.deckCardBacklinkEnabled !== false) {
-		const cardLink = buildCardBacklinkUri({
+		const cardLink = await buildCardBacklinkUri({
 			app,
 			card,
 			scheme: settings.backlinkScheme,
-			uidProperty: settings.advUriUidProperty || 'uid',
+			uidProperty,
 			noteContent,
 		});
 		if (!warning && cardLink.warning) {
 			warning = cardLink.warning;
+		}
+		if (cardLink.noteContent) {
+			noteContent = cardLink.noteContent;
 		}
 		cardBacklinkHtml = buildCardBacklinkHtml(
 			cardLink.uri,

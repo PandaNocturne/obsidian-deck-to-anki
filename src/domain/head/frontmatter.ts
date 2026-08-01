@@ -318,6 +318,19 @@ export function clearAllDeckYaml(content: string): string {
 	return stripEmptyFrontmatter(next);
 }
 
+/** Insert or update a single YAML frontmatter property (creates FM if missing). */
+export function upsertYamlProperty(
+	content: string,
+	key: string,
+	value: string,
+): string {
+	const k = key.trim();
+	if (!k) {
+		return content;
+	}
+	return applyFrontmatterUpdates(content, { [k]: value }, new Set());
+}
+
 /**
  * Insert or update card-mode Anki note id as YAML `deckID`.
  * Also ensures `deckType: card` so reload still parses as card mode
