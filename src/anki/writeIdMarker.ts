@@ -1,5 +1,9 @@
 import type { App, TFile } from 'obsidian';
-import { createIdMarkerRaw, ID_MARKER_REGEXP } from '../domain/head/idMarker';
+import {
+	createIdMarkerRaw,
+	ID_MARKER_REGEXP,
+	parseIdMarker,
+} from '../domain/head/idMarker';
 import { upsertDeckIdYaml } from '../domain/head/frontmatter';
 import type { CardNode } from '../domain/head/types';
 import { resolveSourceFile } from './backlink';
@@ -10,6 +14,8 @@ export interface PendingIdMarkerWrite {
 }
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
+/** Trailing Obsidian block id on a list front line. */
+const TRAILING_BLOCK_ID_REGEXP = /\s*\^[a-zA-Z0-9-]+\s*$/;
 
 /**
  * Remove legacy `<!--ID: n-->` lines from the note body (after YAML).
@@ -42,7 +48,7 @@ function applyCardModeDeckId(content: string, noteId: number): string {
 /**
  * Apply one `<!--ID: n-->` edit to an in-memory line array (no vault write).
  * `card.lineEnd` is exclusive. Call bottom-to-top when batching inserts.
- * Not used for card-mode files (those use YAML `deckID`).
+ * Used for head-mode cards only.
  */
 export function applyCardIdMarkerToLines(
 	lines: string[],
@@ -79,9 +85,47 @@ export function applyCardIdMarkerToLines(
 }
 
 /**
+ * List mode: put Anki note id as Obsidian block id on the top-level list line
+ * (`- front ^123`) and remove legacy `<!--ID: n-->` in that card’s range.
+ * `card.lineEnd` is treated as inclusive (list parser convention).
+ */
+export function applyListBlockIdToLines(
+	lines: string[],
+	card: CardNode,
+	noteId: number,
+): void {
+	const idx = Math.max(0, card.lineStart);
+	const line = lines[idx];
+	if (line === undefined) {
+		return;
+	}
+
+	const withoutId = line.replace(TRAILING_BLOCK_ID_REGEXP, '').replace(/\s+$/g, '');
+	lines[idx] = `${withoutId} ^${noteId}`;
+
+	// Strip legacy HTML markers inside this card (bottom → top).
+	const endInclusive = Math.min(
+		lines.length - 1,
+		Math.max(idx, card.lineEnd),
+	);
+	for (let i = endInclusive; i > idx; i--) {
+		const raw = lines[i];
+		if (raw === undefined || !parseIdMarker(raw, i)) {
+			continue;
+		}
+		lines.splice(i, 1);
+		// Drop the blank spacer line commonly left above <!--ID-->.
+		if (i - 1 > idx && !(lines[i - 1] ?? '').trim()) {
+			lines.splice(i - 1, 1);
+		}
+	}
+}
+
+/**
  * Persist Anki note id for a card:
  * - card mode → YAML `deckID` (and strip legacy bottom `<!--ID-->`)
- * - head/list → `<!--ID: n-->` near the card block
+ * - list mode → `^noteId` on the first-level list item
+ * - head mode → `<!--ID: n-->` near the card block
  */
 export async function writeCardIdMarker(
 	app: App,
@@ -98,7 +142,11 @@ export async function writeCardIdMarker(
 		return;
 	}
 	const lines = content.split(/\r?\n/);
-	applyCardIdMarkerToLines(lines, card, noteId);
+	if (card.deckClass === 'list') {
+		applyListBlockIdToLines(lines, card, noteId);
+	} else {
+		applyCardIdMarkerToLines(lines, card, noteId);
+	}
 	await app.vault.modify(file, lines.join('\n'));
 }
 
@@ -132,7 +180,10 @@ export async function writePendingIdMarkers(
 		}
 		const content = await app.vault.read(file);
 		const cardMode = items.filter((i) => i.card.deckClass === 'card');
-		const markerMode = items.filter((i) => i.card.deckClass !== 'card');
+		const listMode = items.filter((i) => i.card.deckClass === 'list');
+		const headMode = items.filter(
+			(i) => i.card.deckClass !== 'card' && i.card.deckClass !== 'list',
+		);
 
 		let next = content;
 		// Card-mode: one file = one card → YAML deckID.
@@ -140,13 +191,17 @@ export async function writePendingIdMarkers(
 			next = applyCardModeDeckId(next, noteId);
 		}
 
-		if (markerMode.length > 0) {
+		if (listMode.length > 0 || headMode.length > 0) {
 			const lines = next.split(/\r?\n/);
-			const sorted = [...markerMode].sort(
+			const sorted = [...listMode, ...headMode].sort(
 				(a, b) => b.card.lineStart - a.card.lineStart,
 			);
 			for (const { card, noteId } of sorted) {
-				applyCardIdMarkerToLines(lines, card, noteId);
+				if (card.deckClass === 'list') {
+					applyListBlockIdToLines(lines, card, noteId);
+				} else {
+					applyCardIdMarkerToLines(lines, card, noteId);
+				}
 			}
 			next = lines.join('\n');
 		}

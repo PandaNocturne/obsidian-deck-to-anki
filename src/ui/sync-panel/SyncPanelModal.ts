@@ -1205,7 +1205,7 @@ export class SyncPanelUI {
 					: this.parsed?.deckType === 'file'
 						? '未找到关联笔记或子笔记中无卡片。在正文添加 [[笔记]] 链接。'
 						: this.parsed?.deckType === 'list'
-							? '未识别到一级列表项。标题用于分组，- / * / 1. 一级列表为卡片，次级列表为反面。'
+							? '未识别到一级列表项。标题用于分组；- / * / 1. 一级列表为正面（同步后写 ^AnkiID），缩进内容为反面（解析时去掉一层缩进）。'
 							: this.parsed?.deckType === 'card'
 								? '未识别到卡片。去除 YAML 后，用单独一行的 --- 分隔正面与反面。'
 								: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',

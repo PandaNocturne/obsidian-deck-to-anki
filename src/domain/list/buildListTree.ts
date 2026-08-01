@@ -11,6 +11,8 @@ const LIST_ITEM_REGEXP = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const HEADING_REGEXP = /^(#{1,6})\s+(.*?)\s*$/;
 /** Obsidian block id at end of a line: ^abc-123 */
 const BLOCK_ID_REGEXP = /\s*\^([a-zA-Z0-9-]+)\s*$/;
+/** Numeric ^id used as Anki note id on list fronts. */
+const NUMERIC_BLOCK_ID_REGEXP = /^[1-9]\d*$/;
 
 function stripBlockId(text: string): { text: string; blockId?: string } {
 	const match = text.match(BLOCK_ID_REGEXP);
@@ -67,6 +69,56 @@ function isFenceLine(line: string): RegExpMatchArray | null {
 	return line.match(/^(`{3,}|~{3,})/);
 }
 
+/**
+ * Infer one indent unit from nested content under a top-level list card.
+ * Prefers a leading tab; otherwise 2 or 4 spaces (common Markdown steps).
+ */
+export function inferListIndentUnit(backLines: string[]): string {
+	for (const line of backLines) {
+		if (!line.trim()) {
+			continue;
+		}
+		if (line.startsWith('\t')) {
+			return '\t';
+		}
+		const spaces = line.match(/^( +)/)?.[1] ?? '';
+		if (spaces.length >= 4) {
+			return '    ';
+		}
+		if (spaces.length >= 2) {
+			return '  ';
+		}
+		if (spaces.length === 1) {
+			return ' ';
+		}
+	}
+	return '\t';
+}
+
+/** Remove one indent unit (tab or spaces) from the start of a line. */
+export function stripOneListIndent(line: string, unit: string): string {
+	if (!line) {
+		return line;
+	}
+	if (unit && line.startsWith(unit)) {
+		return line.slice(unit.length);
+	}
+	if (line.startsWith('\t')) {
+		return line.slice(1);
+	}
+	const spaces = line.match(/^( {1,4})/)?.[1];
+	if (spaces) {
+		return line.slice(spaces.length);
+	}
+	return line;
+}
+
+/** Dedent every line of list-card back content by one indent level. */
+export function dedentListBackLines(backLines: string[]): string[] {
+	const unit = inferListIndentUnit(backLines);
+	return backLines.map((line) => stripOneListIndent(line, unit));
+}
+
 function joinDeckPath(parts: string[]): string {
 	return parts.filter((part) => part.length > 0).join('::');
 }
@@ -102,6 +154,8 @@ export interface BuildListTreeOptions {
  * - headings (H1–H6) form deck groups
  * - each top-level list item under the current heading is a card front
  * - nested list items / indented continuations become the back
+ * - Anki note id is the trailing `^id` on the front line (legacy `<!--ID-->` still read)
+ * - back text is dedented by one indent level
  */
 export function buildListTree(options: BuildListTreeOptions): {
 	root: DeckNode;
@@ -162,15 +216,23 @@ export function buildListTree(options: BuildListTreeOptions): {
 			endLineExclusive,
 		);
 
-		const backText = backLines
-			.filter((_, idx) => {
+		const dedented = dedentListBackLines(
+			backLines.filter((_, idx) => {
 				const lineIndex = regionStart + idx;
 				return !idMarker || lineIndex !== idMarker.lineIndex;
-			})
+			}),
+		);
+		const backText = dedented
 			.join('\n')
 			.replace(/^\s*\n/, '')
 			.replace(/\n+\s*$/, '')
 			.trim();
+
+		// Prefer numeric ^blockId as Anki note id; fall back to legacy <!--ID-->.
+		let noteId = idMarker?.noteId;
+		if (blockId && NUMERIC_BLOCK_ID_REGEXP.test(blockId)) {
+			noteId = Number(blockId);
+		}
 
 		const parent = currentParent();
 		cardSeq += 1;
@@ -185,7 +247,8 @@ export function buildListTree(options: BuildListTreeOptions): {
 			deckPath: parent.deckPath,
 			deckClass: 'list',
 			tags: collectCardTags([front, backText]),
-			noteId: idMarker?.noteId,
+			noteId,
+			// Keep legacy marker so sync can migrate it away when writing ^id.
 			idMarker: idMarker ?? undefined,
 			blockId,
 			sourceFilePath: filePath,

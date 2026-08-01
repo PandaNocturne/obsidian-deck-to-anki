@@ -564,13 +564,14 @@ export async function syncCardToAnki(
 		deckIdValue: payload.fields[FIELD_ID],
 	});
 
-	// Card mode → always persist YAML `deckID` (and migrate legacy `<!--ID-->`).
-	// Head/list → write `<!--ID-->` when missing or note id changed.
+	// Card → YAML deckID; list → ^noteId on L1 item; head → <!--ID-->.
 	const needsIdWrite =
 		card.deckClass === 'card' ||
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
-		!card.idMarker;
+		(card.deckClass === 'list'
+			? card.blockId !== String(upserted.noteId)
+			: !card.idMarker);
 
 	let pendingIdWrite: PendingIdMarkerWrite | undefined;
 	if (needsIdWrite) {

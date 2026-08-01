@@ -1463,7 +1463,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(cardHost)
 			.setName('卡片回链（ob-deck-backlink）')
 			.setDesc(
-				'写入定位到当前卡片的链接：Head → 标题，List → 块（^id），Card → 文件。默认开启。',
+				'写入定位到当前卡片的链接：Head → 标题，List → 一级列表块（^AnkiID），Card → 文件。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
