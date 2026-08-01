@@ -25,6 +25,8 @@ const SAVE_DEBOUNCE_MS = 600;
  */
 export class MediaCompressCache {
 	private entries = new Map<string, MediaCompressCacheEntry>();
+	/** Deduplicate concurrent compress for the same content+quality. */
+	private inflight = new Map<string, Promise<MediaCompressCacheEntry>>();
 	private saveTimer: number | null = null;
 	private loaded = false;
 
@@ -48,6 +50,34 @@ export class MediaCompressCache {
 		this.entries.set(key, entry);
 		this.trimIfNeeded();
 		this.scheduleSave();
+	}
+
+	/**
+	 * Return a cached entry, or run `compute` once and cache it.
+	 * Parallel callers for the same key share one in-flight promise
+	 * (avoids PNG/JPEG filename flip across head/front/back fields).
+	 */
+	async getOrCompute(
+		key: string,
+		compute: () => Promise<MediaCompressCacheEntry>,
+	): Promise<MediaCompressCacheEntry> {
+		const hit = this.entries.get(key);
+		if (hit) {
+			return hit;
+		}
+		const pending = this.inflight.get(key);
+		if (pending) {
+			return pending;
+		}
+		const task = (async () => {
+			const entry = await compute();
+			this.set(key, entry);
+			return entry;
+		})().finally(() => {
+			this.inflight.delete(key);
+		});
+		this.inflight.set(key, task);
+		return task;
 	}
 
 	clear(): void {

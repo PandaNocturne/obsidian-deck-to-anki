@@ -25,6 +25,11 @@ export interface MediaProcessOptions {
 	compressQuality?: number;
 	/** Stable compress results keyed by content hash. */
 	compressCache?: MediaCompressCache;
+	/**
+	 * Per note-build memo so parallel head/front/back fields share one
+	 * Anki filename for the same vault file.
+	 */
+	assetMemo?: Map<string, Promise<MediaAsset>>;
 }
 
 const IMAGE_EXTENSIONS = new Set([
@@ -141,6 +146,30 @@ async function buildAsset(
 	kind: 'image' | 'audio',
 	options?: MediaProcessOptions,
 ): Promise<MediaAsset> {
+	const memo = options?.assetMemo;
+	const quality = options?.compressQuality;
+	const memoKey = `${kind}\0${file.path}\0${quality ?? ''}`;
+	const existing = memo?.get(memoKey);
+	if (existing) {
+		return existing;
+	}
+
+	const task = buildAssetUncached(app, file, kind, options);
+	memo?.set(memoKey, task);
+	try {
+		return await task;
+	} catch (error) {
+		memo?.delete(memoKey);
+		throw error;
+	}
+}
+
+async function buildAssetUncached(
+	app: App,
+	file: TFile,
+	kind: 'image' | 'audio',
+	options?: MediaProcessOptions,
+): Promise<MediaAsset> {
 	const quality = options?.compressQuality;
 	const shouldCompress =
 		kind === 'image' &&
@@ -153,33 +182,30 @@ async function buildAsset(
 		const contentHash = await hashFileContent(data);
 		const cacheKey = MediaCompressCache.cacheKey(contentHash, quality);
 		const cache = options?.compressCache;
-		const cached = cache?.get(cacheKey);
-		if (cached) {
-			return {
-				kind,
-				fileName: ankiFileNameFor(file, cached.ext),
-				dataBase64: cached.dataBase64,
-				vaultPath: file.path,
-			};
-		}
 
-		const compressed = await compressImageForAnki(
-			data,
-			file.extension,
-			quality,
-		);
-		const entry = compressed
-			? {
-					ext: compressed.ext,
-					dataBase64: compressed.dataBase64,
-					cachedAt: Date.now(),
-				}
-			: {
-					ext: file.extension.toLowerCase(),
-					dataBase64: arrayBufferToBase64(data),
-					cachedAt: Date.now(),
-				};
-		cache?.set(cacheKey, entry);
+		const computeEntry = async () => {
+			const compressed = await compressImageForAnki(
+				data,
+				file.extension,
+				quality,
+			);
+			return compressed
+				? {
+						ext: compressed.ext,
+						dataBase64: compressed.dataBase64,
+						cachedAt: Date.now(),
+					}
+				: {
+						ext: file.extension.toLowerCase(),
+						dataBase64: arrayBufferToBase64(data),
+						cachedAt: Date.now(),
+					};
+		};
+
+		const entry = cache
+			? await cache.getOrCompute(cacheKey, computeEntry)
+			: await computeEntry();
+
 		return {
 			kind,
 			fileName: ankiFileNameFor(file, entry.ext),
@@ -360,7 +386,7 @@ export async function processRenderedHtmlMedia(
 		if (!raw) {
 			return null;
 		}
-		let candidate = raw.trim();
+		let candidate = raw.trim().split(/[?#]/, 1)[0] ?? '';
 		if (
 			!candidate ||
 			/^https?:\/\//i.test(candidate) ||
@@ -390,18 +416,40 @@ export async function processRenderedHtmlMedia(
 			}
 		}
 		candidate = candidate.replace(/\\/g, '/');
-		return resolveVaultFile(app, candidate, sourcePath);
+		const byPath = resolveVaultFile(app, candidate, sourcePath);
+		if (byPath) {
+			return byPath;
+		}
+		// Fallback: basename only (hash-style app:// paths).
+		const baseName = candidate.split('/').pop();
+		if (baseName && baseName !== candidate) {
+			return resolveVaultFile(app, baseName, sourcePath);
+		}
+		return null;
 	};
 
-	// Internal embeds often expose vault-relative path on the span.
+	const cleanImageEl = (
+		fileName: string,
+		alt: string,
+	): HTMLImageElement => {
+		const img = document.createElement('img');
+		img.setAttribute('src', fileName);
+		if (alt) {
+			img.setAttribute('alt', alt);
+		}
+		return img;
+	};
+
+	// Internal embeds (span or div) often expose vault-relative path on src.
 	for (const embed of Array.from(
 		host.querySelectorAll<HTMLElement>(
-			'span.internal-embed.media-embed, span.image-embed, span.audio-embed, span.media-embed',
+			'span.internal-embed, div.internal-embed, span.image-embed, div.image-embed, span.audio-embed, span.media-embed, div.media-embed',
 		),
 	)) {
 		const embedSrc =
 			embed.getAttribute('src') ||
 			embed.getAttribute('alt') ||
+			embed.querySelector('img')?.getAttribute('src') ||
 			'';
 		const file = tryResolveFromAttr(embedSrc);
 		if (!file) {
@@ -420,20 +468,34 @@ export async function processRenderedHtmlMedia(
 				document.createTextNode(`[sound:${asset.fileName}]`),
 			);
 		} else {
-			const img = document.createElement('img');
-			img.setAttribute('src', asset.fileName);
-			img.setAttribute(
-				'alt',
-				embed.getAttribute('alt') || file.basename,
-			);
-			embed.replaceWith(img);
+			const alt =
+				embed.getAttribute('alt') ||
+				embed.querySelector('img')?.getAttribute('alt') ||
+				file.basename;
+			embed.replaceWith(cleanImageEl(asset.fileName, alt));
 		}
 	}
 
+	// Drop leftover Obsidian image chrome that can linger beside rewritten imgs.
+	host
+		.querySelectorAll(
+			'.image-resize-corner, .image-wrapper > .edit-block-button, button.edit-block-button',
+		)
+		.forEach((el) => el.remove());
+
 	for (const img of Array.from(host.querySelectorAll('img'))) {
 		const src = img.getAttribute('src');
+		const alt = img.getAttribute('alt') || '';
 		// Already rewritten to flat Anki filename (no path / protocol).
-		if (src && !src.includes('/') && !src.includes(':') && !src.includes('\\')) {
+		if (
+			src &&
+			!src.includes('/') &&
+			!src.includes(':') &&
+			!src.includes('\\') &&
+			!src.includes('?')
+		) {
+			// Drop extra attrs Obsidian may inject (width/style/draggable…).
+			img.replaceWith(cleanImageEl(src, alt || img.getAttribute('alt') || ''));
 			continue;
 		}
 		const file =
@@ -452,7 +514,19 @@ export async function processRenderedHtmlMedia(
 		if (!asset) {
 			continue;
 		}
-		img.setAttribute('src', asset.fileName);
+		img.replaceWith(cleanImageEl(asset.fileName, alt || file.basename));
+	}
+
+	// Unwrap trivial image-wrapper divs left after embed rewrite.
+	for (const wrap of Array.from(
+		host.querySelectorAll('.image-wrapper'),
+	)) {
+		if (
+			wrap.childNodes.length === 1 &&
+			wrap.firstElementChild?.tagName === 'IMG'
+		) {
+			wrap.replaceWith(wrap.firstElementChild);
+		}
 	}
 
 	for (const el of Array.from(

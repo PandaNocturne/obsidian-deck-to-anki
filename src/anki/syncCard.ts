@@ -288,6 +288,8 @@ export async function syncCardToAnki(
 
 	if (payload.assets.length > 0) {
 		await client.storeMediaFiles(payload.assets);
+		// Persist compress→filename mapping so the next status check matches.
+		await options?.mediaCache?.saveNow();
 	}
 
 	const upserted = await upsertAnkiNote(client, {

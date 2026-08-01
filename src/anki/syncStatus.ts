@@ -77,8 +77,80 @@ function escapeAnkiQueryValue(value: string): string {
 	return value.replace(/"/g, '\\"');
 }
 
+/** Basename of an Anki/local media src; strips query/hash and path. */
+function canonicalizeMediaSrc(src: string): string {
+	let s = src.trim().split(/[?#]/, 1)[0] ?? '';
+	s = s.replace(/\\/g, '/');
+	const slash = s.lastIndexOf('/');
+	if (slash >= 0) {
+		s = s.slice(slash + 1);
+	}
+	try {
+		s = decodeURIComponent(s);
+	} catch {
+		// keep raw
+	}
+	return s;
+}
+
+/**
+ * Normalize field HTML for sync compare.
+ * Image cards often differ only in Obsidian embed chrome / img attrs / void tags.
+ */
 function normalizeFieldHtml(html: string): string {
-	return html.replace(/\r\n/g, '\n').trim();
+	const trimmed = html.replace(/\r\n/g, '\n').trim();
+	if (!trimmed) {
+		return '';
+	}
+	if (typeof document === 'undefined') {
+		return trimmed.normalize('NFC');
+	}
+
+	const host = document.createElement('div');
+	host.innerHTML = trimmed;
+
+	host
+		.querySelectorAll(
+			'.image-resize-corner, button.edit-block-button, .edit-block-button, button.copy-code-button, .copy-code-button',
+		)
+		.forEach((el) => el.remove());
+
+	for (const embed of Array.from(
+		host.querySelectorAll(
+			'.internal-embed, .media-embed, .image-embed, .image-wrapper',
+		),
+	)) {
+		const img = embed.querySelector('img');
+		if (!img) {
+			continue;
+		}
+		const clean = document.createElement('img');
+		clean.setAttribute(
+			'src',
+			canonicalizeMediaSrc(img.getAttribute('src') ?? ''),
+		);
+		const alt = img.getAttribute('alt');
+		if (alt) {
+			clean.setAttribute('alt', alt);
+		}
+		embed.replaceWith(clean);
+	}
+
+	for (const img of Array.from(host.querySelectorAll('img'))) {
+		const src = canonicalizeMediaSrc(img.getAttribute('src') ?? '');
+		const alt = img.getAttribute('alt') ?? '';
+		const clean = document.createElement('img');
+		clean.setAttribute('src', src);
+		if (alt) {
+			clean.setAttribute('alt', alt);
+		}
+		img.replaceWith(clean);
+	}
+
+	let out = host.innerHTML.replace(/\r\n/g, '\n').trim();
+	// Anki may emit void tags / inter-tag whitespace differently.
+	out = out.replace(/\s+\/?>/g, '>').replace(/>\s+</g, '><');
+	return out.normalize('NFC');
 }
 
 function stripHtmlToText(html: string): string {

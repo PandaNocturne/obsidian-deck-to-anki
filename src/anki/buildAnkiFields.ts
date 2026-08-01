@@ -129,7 +129,11 @@ export async function buildAnkiNoteFieldPayload(
 	const deckName = toAnkiDeckNameForCard(card, numbering.deckNumbering);
 
 	const { headMarkdown, frontMarkdown } = splitCardHeadAndFront(card);
-	const mediaOpts = mediaOptions(settings, options?.mediaCache);
+	const baseMediaOpts = mediaOptions(settings, options?.mediaCache);
+	const mediaOpts: MediaProcessOptions = {
+		...(baseMediaOpts ?? {}),
+		assetMemo: new Map(),
+	};
 	const emptyField = (): Promise<{ html: string; assets: MediaAsset[] }> =>
 		Promise.resolve({ html: '', assets: [] });
 	const [head, front, back] = await Promise.all([
