@@ -847,26 +847,30 @@ export class SyncPanelUI {
 		this.renderBody();
 		this.saveCurrentTabCache();
 
-		const skipAutoCheck =
-			this.state.tab !== 'current' ||
-			(options?.recheckKeys?.length ?? 0) > 0;
+		const skipAutoCheck = (options?.recheckKeys?.length ?? 0) > 0;
 		if (!skipAutoCheck) {
-			this.scheduleAutoCheckCurrentNote();
+			this.scheduleAutoCheckAfterScan();
 		}
 	}
 
 	/**
-	 * After current-note tree is painted, optionally refresh Anki status
-	 * in the background (setting: autoCheckCurrentNote).
+	 * After a tab tree is painted, optionally refresh Anki status in the
+	 * background (settings: autoCheckCurrentNote / autoCheckAllCards).
 	 */
-	private scheduleAutoCheckCurrentNote(): void {
-		if (this.plugin.settings.autoCheckCurrentNote === false) {
+	private scheduleAutoCheckAfterScan(): void {
+		if (!this.viewRoot || this.busy || this.ankiStatusChecked) {
 			return;
 		}
-		if (this.state.tab !== 'current' || !this.viewRoot) {
-			return;
-		}
-		if (this.busy) {
+		const tab = this.state.tab;
+		if (tab === 'current') {
+			if (this.plugin.settings.autoCheckCurrentNote === false) {
+				return;
+			}
+		} else if (tab === 'all') {
+			if (this.plugin.settings.autoCheckAllCards === false) {
+				return;
+			}
+		} else {
 			return;
 		}
 
@@ -880,7 +884,10 @@ export class SyncPanelUI {
 		if (id !== this.bgCheckId || this.busy) {
 			return;
 		}
-		if (this.state.tab !== 'current' || !this.viewRoot) {
+		if (
+			!this.viewRoot ||
+			(this.state.tab !== 'current' && this.state.tab !== 'all')
+		) {
 			return;
 		}
 

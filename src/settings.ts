@@ -85,10 +85,15 @@ export interface DeckToAnkiSettings {
 	/** Frontmatter property for Advanced URI uid. */
 	advUriUidProperty: string;
 	/**
-	 * After parsing the current-note tab, auto-check Anki status in the
+	 * After parsing the current-card tab, auto-check Anki status in the
 	 * background (tree renders first). Default on.
 	 */
 	autoCheckCurrentNote: boolean;
+	/**
+	 * After parsing the all-cards tab, auto-check Anki status in the
+	 * background. Default on.
+	 */
+	autoCheckAllCards: boolean;
 	/**
 	 * When status check finds Anki-only (deleted) notes, auto-check them
 	 * in the sync panel. Default on.
@@ -136,6 +141,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
+	autoCheckAllCards: true,
 	autoSelectDeletedCards: true,
 	requireCheckBeforeSync: true,
 	deckNumberingEnabled: true,
@@ -482,38 +488,6 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					}),
 			);
 
-		new Setting(section)
-			.setName('自动勾选已删除卡片')
-			.setDesc(
-				'状态检测发现「仅 Anki 存在」的卡片时自动勾选，便于 Update/Force 一并删除。默认开启。',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(
-						this.plugin.settings.autoSelectDeletedCards !== false,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.autoSelectDeletedCards = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
-		new Setting(section)
-			.setName('同步前需要检测')
-			.setDesc(
-				'开启后须先对照 Anki 完成状态检测，才能 Force/Update；关闭后可不检测直接同步。默认开启。',
-			)
-			.addToggle((toggle) =>
-				toggle
-					.setValue(
-						this.plugin.settings.requireCheckBeforeSync !== false,
-					)
-					.onChange(async (value) => {
-						this.plugin.settings.requireCheckBeforeSync = value;
-						await this.plugin.saveSettings();
-					}),
-			);
-
 		const yamlSection = this.beginSection(
 			containerEl,
 			'YAML',
@@ -563,7 +537,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const section = this.beginSection(
 			containerEl,
 			'同步',
-			'AnkiConnect 连接、自动检测与编号写入。',
+			'AnkiConnect 连接与编号写入。',
 		);
 
 		new Setting(section)
@@ -581,7 +555,31 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(section)
-			.setName('打开当前笔记时自动检测')
+			.setName('同步牌组编号')
+			.setDesc(
+				'将牌组同级序号显示在同步树，并写入 Anki 的 ob-deck-tree（如 1. 牌组）。不写入卡片标题/正文。YAML: deckNumbering。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.deckNumberingEnabled !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.deckNumberingEnabled = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		this.renderCheckSettings(containerEl);
+	}
+
+	private renderCheckSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'检测',
+			'同步面板对照 Anki 的自动检测与同步门槛。',
+		);
+
+		new Setting(section)
+			.setName('打开当前卡片自动检测')
 			.setDesc(
 				'解析「当前卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片。默认开启。',
 			)
@@ -595,15 +593,47 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(section)
-			.setName('同步牌组编号')
+			.setName('打开所有卡片自动检测')
 			.setDesc(
-				'将牌组同级序号显示在同步树，并写入 Anki 的 ob-deck-tree（如 1. 牌组）。不写入卡片标题/正文。YAML: deckNumbering。默认开启。',
+				'解析「所有卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片。默认开启。',
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.deckNumberingEnabled !== false)
+					.setValue(this.plugin.settings.autoCheckAllCards !== false)
 					.onChange(async (value) => {
-						this.plugin.settings.deckNumberingEnabled = value;
+						this.plugin.settings.autoCheckAllCards = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('自动勾选已删除卡片')
+			.setDesc(
+				'状态检测发现「仅 Anki 存在」的卡片时自动勾选，便于 Update/Force 一并删除。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(
+						this.plugin.settings.autoSelectDeletedCards !== false,
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.autoSelectDeletedCards = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('同步前需要检测')
+			.setDesc(
+				'开启后须先对照 Anki 完成状态检测，才能 Force/Update；关闭后可不检测直接同步。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(
+						this.plugin.settings.requireCheckBeforeSync !== false,
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.requireCheckBeforeSync = value;
 						await this.plugin.saveSettings();
 					}),
 			);
