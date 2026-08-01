@@ -1036,9 +1036,19 @@ export function shouldSelectByStatus(
 	return true;
 }
 
-/** Update 节能：已同步卡片跳过；Force 不跳过。 */
+/**
+ * Update 节能：已同步卡片跳过；Force 不跳过。
+ * Card 模式若尚无 YAML `deckID`（仅有底部旧标记或尚未写入），不跳过，以便迁移/补写。
+ */
 export function shouldSkipOnUpdate(
 	status: SyncCardStatus | undefined,
+	card?: Pick<CardNode, 'deckClass' | 'hasYamlDeckId'>,
 ): boolean {
+	if (
+		card?.deckClass === 'card' &&
+		card.hasYamlDeckId !== true
+	) {
+		return false;
+	}
 	return status === 'synced';
 }

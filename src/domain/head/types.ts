@@ -50,6 +50,11 @@ export interface CardNode {
 	navTitle?: string;
 	noteId?: number;
 	idMarker?: IdMarkerInfo;
+	/**
+	 * Card mode: true when `noteId` was read from YAML `deckID`
+	 * (not from a legacy `<!--ID-->` marker).
+	 */
+	hasYamlDeckId?: boolean;
 	/** Obsidian block id (`^xxx`) for list cards; required to jump. */
 	blockId?: string;
 	/** Obsidian tags from card content (and YAML for card-mode notes), without `#`. */

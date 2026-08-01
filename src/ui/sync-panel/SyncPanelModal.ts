@@ -1807,7 +1807,7 @@ export class SyncPanelUI {
 		const selectedCards = this.collectSelectedCards();
 		const deleted = this.collectSelectedDeleted();
 		const cards = options.skipSynced
-			? selectedCards.filter((c) => !shouldSkipOnUpdate(c.syncStatus))
+			? selectedCards.filter((c) => !shouldSkipOnUpdate(c.syncStatus, c))
 			: selectedCards;
 		const skipped = selectedCards.length - cards.length;
 
@@ -1886,6 +1886,9 @@ export class SyncPanelUI {
 					`[Deck To Anki] ${options.actionLabel} sync warnings`,
 					warnings,
 				);
+				if (fail > 0 || warnings.some((w) => w.includes('写入 ID'))) {
+					new Notice(warnings[0] ?? summary, 8000);
+				}
 			}
 			progress.setMessage(`${summary}，刷新中…`);
 			await this.reload({

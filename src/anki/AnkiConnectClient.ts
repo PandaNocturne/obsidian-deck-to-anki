@@ -176,34 +176,88 @@ export class AnkiConnectClient {
 		if (noteIds.length === 0) {
 			return [];
 		}
-		const raw = await this.invoke<
-			Array<{
-				noteId?: number;
-				cards?: number[];
-				tags?: string[];
-				modelName?: string;
-				fields?: Record<string, { value?: string }>;
-			} | null>
-		>('notesInfo', { notes: noteIds });
 
-		return raw.flatMap((entry) => {
-			if (!entry || typeof entry.noteId !== 'number') {
+		const parse = (
+			raw:
+				| Array<{
+						noteId?: number;
+						cards?: number[];
+						tags?: string[];
+						modelName?: string;
+						fields?: Record<string, { value?: string }>;
+				  } | null>
+				| null
+				| undefined,
+		) => {
+			if (!Array.isArray(raw)) {
 				return [];
 			}
-			const fields: Record<string, string> = {};
-			for (const [name, value] of Object.entries(entry.fields ?? {})) {
-				fields[name] = value?.value ?? '';
+			return raw.flatMap((entry) => {
+				if (!entry || typeof entry.noteId !== 'number') {
+					return [];
+				}
+				const fields: Record<string, string> = {};
+				for (const [name, value] of Object.entries(entry.fields ?? {})) {
+					fields[name] = value?.value ?? '';
+				}
+				return [
+					{
+						noteId: entry.noteId,
+						cards: Array.isArray(entry.cards) ? entry.cards : [],
+						tags: Array.isArray(entry.tags) ? entry.tags : [],
+						modelName: entry.modelName ?? '',
+						fields,
+					},
+				];
+			});
+		};
+
+		try {
+			const raw = await this.invoke<
+				Array<{
+					noteId?: number;
+					cards?: number[];
+					tags?: string[];
+					modelName?: string;
+					fields?: Record<string, { value?: string }>;
+				} | null>
+			>('notesInfo', { notes: noteIds });
+			return parse(raw);
+		} catch {
+			// Deleted / invalid ids: some AnkiConnect builds error the whole
+			// batch (or a single id) instead of returning null entries.
+			if (noteIds.length === 1) {
+				return [];
 			}
-			return [
-				{
-					noteId: entry.noteId,
-					cards: Array.isArray(entry.cards) ? entry.cards : [],
-					tags: Array.isArray(entry.tags) ? entry.tags : [],
-					modelName: entry.modelName ?? '',
-					fields,
-				},
-			];
-		});
+			const out: Array<{
+				noteId: number;
+				cards: number[];
+				tags: string[];
+				modelName: string;
+				fields: Record<string, string>;
+			}> = [];
+			for (const id of noteIds) {
+				out.push(...(await this.notesInfo([id])));
+			}
+			return out;
+		}
+	}
+
+	/**
+	 * Safe single-note lookup. Returns null when the note was deleted or
+	 * AnkiConnect errors on a stale id (common after deleting a deck).
+	 */
+	async noteInfo(
+		noteId: number,
+	): Promise<{
+		noteId: number;
+		cards: number[];
+		tags: string[];
+		modelName: string;
+		fields: Record<string, string>;
+	} | null> {
+		const list = await this.notesInfo([noteId]);
+		return list[0] ?? null;
 	}
 
 	async listDeckNames(): Promise<string[]> {

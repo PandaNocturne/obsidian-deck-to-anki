@@ -168,8 +168,9 @@ export function buildCardNode(options: BuildCardTreeOptions): {
 		deckClass: 'card',
 		tags: collectCardTags([front, backText], content),
 		noteId,
-		// YAML-backed ids do not use an HTML marker line.
-		idMarker: yamlDeckId !== undefined ? undefined : (idMarker ?? undefined),
+		hasYamlDeckId: yamlDeckId !== undefined,
+		// Keep legacy marker info so sync can migrate it into YAML deckID.
+		idMarker: idMarker ?? undefined,
 		sourceFilePath: filePath,
 		deckBacklinkTrail:
 			deckBacklinkTrail ??

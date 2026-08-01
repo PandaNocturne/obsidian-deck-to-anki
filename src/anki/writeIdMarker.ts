@@ -14,19 +14,21 @@ const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
 /**
  * Remove legacy `<!--ID: n-->` lines from the note body (after YAML).
  * Used when migrating card-mode ids into YAML `deckID`.
+ * No-op when no markers exist (avoids rewriting the whole body / line endings).
  */
 function stripLegacyIdMarkersFromBody(content: string): string {
 	const match = content.match(FRONTMATTER_REGEXP);
-	if (!match || match.index === undefined) {
-		return content
-			.split(/\r?\n/)
-			.filter((line) => !ID_MARKER_REGEXP.test(line))
-			.join('\n');
+	const bodyStart =
+		match && match.index !== undefined
+			? match.index + match[0].length
+			: 0;
+	const prefix = content.slice(0, bodyStart);
+	const body = content.slice(bodyStart);
+	const lines = body.split(/\r?\n/);
+	if (!lines.some((line) => ID_MARKER_REGEXP.test(line))) {
+		return content;
 	}
-	const prefix = content.slice(0, match.index + match[0].length);
-	const body = content.slice(match.index + match[0].length);
-	const cleaned = body
-		.split(/\r?\n/)
+	const cleaned = lines
 		.filter((line) => !ID_MARKER_REGEXP.test(line))
 		.join('\n')
 		.replace(/^\n+/, '');

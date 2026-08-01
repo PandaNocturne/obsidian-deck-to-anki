@@ -318,16 +318,25 @@ export function clearAllDeckYaml(content: string): string {
 	return stripEmptyFrontmatter(next);
 }
 
-/** Insert or update card-mode Anki note id as YAML `deckID`. */
+/**
+ * Insert or update card-mode Anki note id as YAML `deckID`.
+ * Also ensures `deckType: card` so reload still parses as card mode
+ * (important when the note previously had no YAML / only a session override).
+ * Returns the original string when YAML already matches (no line-ending churn).
+ */
 export function upsertDeckIdYaml(content: string, noteId: number): string {
 	const id = Math.trunc(noteId);
 	if (!Number.isFinite(id) || id <= 0) {
 		return content;
 	}
+	const meta = parseFrontmatter(content);
+	if (meta.deckID === id && meta.deckType === 'card') {
+		return content;
+	}
 	// Canonical key is deckID; drop legacy deckId if present.
 	return applyFrontmatterUpdates(
 		content,
-		{ deckID: String(id) },
+		{ deckID: String(id), deckType: 'card' },
 		new Set(['deckId']),
 	);
 }

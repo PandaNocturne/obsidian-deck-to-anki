@@ -11,7 +11,9 @@ import type { MediaCompressCache } from './mediaCompressCache';
 import {
 	allDeckTemplateIdsOrdered,
 	defaultStyleFor,
+	FIELD_BACK,
 	FIELD_FRONT,
+	FIELD_HEAD,
 	type DeckTemplateId,
 } from './templates';
 import {
@@ -85,6 +87,86 @@ function escapeAnkiQueryValue(value: string): string {
 	return value.replace(/"/g, '\\"');
 }
 
+function escapeHtmlText(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+
+function fieldHasContent(value: string | undefined): boolean {
+	return (value ?? '').replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim()
+		.length > 0;
+}
+
+/** Field names referenced in Anki card template HTML (`{{Field}}`, `{{#Field}}`, …). */
+function fieldNamesInTemplateHtml(html: string): string[] {
+	const names = new Set<string>();
+	const re = /\{\{[/#^]?([^}:]+)(?::[^}]*)?\}\}/g;
+	let match: RegExpExecArray | null;
+	while ((match = re.exec(html)) !== null) {
+		const name = (match[1] ?? '').trim();
+		if (name && name !== 'FrontSide') {
+			names.add(name);
+		}
+	}
+	return [...names];
+}
+
+/**
+ * Make sure addNote won't hit "cannot create note because it is empty":
+ * - Mirror ob-deck-* into legacy Front/Back when those fields still exist
+ * - If the live Front templates only reference empty fields, copy content into them
+ * - Last resort: put plain-text fallback into ob-deck-front / Front
+ */
+function ensureFieldsNonEmptyForAnki(
+	fields: Record<string, string>,
+	allowed: Set<string>,
+	frontTemplateHtml: string,
+	plainFallback: string,
+): void {
+	const front = fields[FIELD_FRONT] ?? '';
+	const head = fields[FIELD_HEAD] ?? '';
+	const back = fields[FIELD_BACK] ?? '';
+	const best =
+		(fieldHasContent(front) && front) ||
+		(fieldHasContent(head) && head) ||
+		(fieldHasContent(back) && back) ||
+		(plainFallback.trim()
+			? `<p>${escapeHtmlText(plainFallback.trim())}</p>`
+			: '');
+
+	if (!fieldHasContent(fields[FIELD_FRONT]) && best) {
+		fields[FIELD_FRONT] = best;
+	}
+
+	// Legacy Basic-style fields (still present when rename failed / mixed models).
+	if (allowed.has('Front') && !fieldHasContent(fields.Front)) {
+		fields.Front = fields[FIELD_FRONT] || best;
+	}
+	if (allowed.has('Back') && !fieldHasContent(fields.Back)) {
+		fields.Back = fields[FIELD_BACK] || '';
+	}
+
+	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
+	if (referenced.length === 0) {
+		return;
+	}
+	const anyReferencedFilled = referenced.some((name) =>
+		fieldHasContent(fields[name]),
+	);
+	if (anyReferencedFilled || !best) {
+		return;
+	}
+	// Live Anki Front template still points at empty fields (e.g. only {{Front}}
+	// while we filled ob-deck-front). Populate the first referenced field.
+	const target =
+		referenced.find((name) => allowed.has(name) || name in fields) ??
+		referenced[0]!;
+	fields[target] = best;
+}
+
 async function syncNoteTags(
 	client: AnkiConnectClient,
 	noteId: number,
@@ -94,8 +176,7 @@ async function syncNoteTags(
 	if (!enabled) {
 		return;
 	}
-	const info = await client.notesInfo([noteId]);
-	const note = info[0];
+	const note = await client.noteInfo(noteId);
 	if (!note) {
 		return;
 	}
@@ -119,6 +200,8 @@ async function upsertAnkiNote(
 		fields: Record<string, string>;
 		tags: string[];
 		deckTagsEnabled: boolean;
+		/** Raw card front text when HTML render is empty. */
+		plainFallback?: string;
 	},
 ): Promise<{ noteId: number; created: boolean }> {
 	const { deckName, modelName, tags, deckTagsEnabled } = input;
@@ -131,16 +214,42 @@ async function upsertAnkiNote(
 			fields[key] = value;
 		}
 	}
-	if (!(FIELD_FRONT in fields)) {
+	if (!(FIELD_FRONT in fields) && !allowed.has('Front')) {
 		throw new Error(
-			`笔记类型「${modelName}」缺少字段 ${FIELD_FRONT}。请打开插件设置点击「强制更新」，或确认 AnkiConnect 可用后重试同步。`,
+			`笔记类型「${modelName}」缺少字段 ${FIELD_FRONT}（或 Front）。请打开插件设置点击「强制更新」，或确认 AnkiConnect 可用后重试同步。`,
+		);
+	}
+
+	let liveFrontTemplates = '';
+	try {
+		const templates = await client.modelTemplates(modelName);
+		liveFrontTemplates = Object.values(templates)
+			.map((t) => t.Front)
+			.join('\n');
+	} catch {
+		liveFrontTemplates = '';
+	}
+
+	ensureFieldsNonEmptyForAnki(
+		fields,
+		allowed,
+		liveFrontTemplates,
+		input.plainFallback ?? '',
+	);
+
+	if (
+		!fieldHasContent(fields[FIELD_FRONT]) &&
+		!fieldHasContent(fields.Front) &&
+		!fieldHasContent(fields[FIELD_HEAD])
+	) {
+		throw new Error(
+			'卡片正面渲染后为空，Anki 无法创建笔记。请检查正文，或到插件设置对该模板「强制更新」。',
 		);
 	}
 
 	const applyUpdate = async (noteId: number): Promise<void> => {
 		await client.updateNoteFields(noteId, fields);
-		const info = await client.notesInfo([noteId]);
-		const note = info[0];
+		const note = await client.noteInfo(noteId);
 		if (note?.cards?.length) {
 			await client.changeDeck(note.cards, deckName);
 		}
@@ -148,50 +257,86 @@ async function upsertAnkiNote(
 	};
 
 	const findAndOverwriteDuplicate = async (): Promise<number | null> => {
-		const query = `deck:"${escapeAnkiQueryValue(deckName)}" note:"${escapeAnkiQueryValue(modelName)}"`;
-		const candidates = await client.findNotes(query);
-		if (candidates.length === 0) {
-			return null;
-		}
-		const details = await client.notesInfo(candidates);
 		const front = fields[FIELD_FRONT] ?? '';
-		const match =
-			details.find((note) => (note.fields[FIELD_FRONT] ?? '') === front) ??
-			details.find((note) => (note.fields.Front ?? '') === front) ??
-			details[0];
-		if (!match) {
-			return null;
+		// Prefer same deck; fall back to whole collection (note may have
+		// survived outside the deleted/recreated deck).
+		const queries = [
+			`deck:"${escapeAnkiQueryValue(deckName)}" note:"${escapeAnkiQueryValue(modelName)}"`,
+			`note:"${escapeAnkiQueryValue(modelName)}"`,
+		];
+		for (const query of queries) {
+			const candidates = await client.findNotes(query);
+			if (candidates.length === 0) {
+				continue;
+			}
+			const details = await client.notesInfo(candidates);
+			const match =
+				details.find(
+					(note) => (note.fields[FIELD_FRONT] ?? '') === front,
+				) ??
+				details.find((note) => (note.fields.Front ?? '') === front);
+			if (!match) {
+				continue;
+			}
+			await applyUpdate(match.noteId);
+			return match.noteId;
 		}
-		await applyUpdate(match.noteId);
-		return match.noteId;
+		return null;
 	};
 
+	// Local YAML / <!--ID--> may point at a note Anki no longer has
+	// (e.g. user deleted the deck). Treat missing / card-less notes as create.
 	if (input.noteId !== undefined) {
-		const existing = await client.notesInfo([input.noteId]);
-		if (existing.length > 0) {
-			await applyUpdate(input.noteId);
-			return { noteId: input.noteId, created: false };
+		const existing = await client.noteInfo(input.noteId);
+		if (existing && existing.cards.length > 0) {
+			try {
+				await applyUpdate(input.noteId);
+				return { noteId: input.noteId, created: false };
+			} catch (error) {
+				const msg =
+					error instanceof Error ? error.message : String(error);
+				const stale =
+					/not\s*found|missing|不存在|找不到|deleted/i.test(msg) ||
+					msg.trim() === '';
+				if (!stale) {
+					throw error;
+				}
+				// Fall through and recreate.
+			}
+		} else if (existing && existing.cards.length === 0) {
+			// Note exists but has no cards (deck wiped) — drop and recreate.
+			try {
+				await client.deleteNotes([input.noteId]);
+			} catch {
+				/* ignore */
+			}
 		}
-		// Stale <!--ID--> — recreate below.
 	}
 
-	let createdId: number | null = null;
-	try {
-		createdId = await client.addNote({
-			deckName,
-			modelName,
-			fields,
-			tags,
-			allowDuplicate: false,
-		});
-	} catch (error) {
-		const msg = error instanceof Error ? error.message : String(error);
-		const looksDuplicate = /duplicate|重复/i.test(msg);
-		if (!looksDuplicate) {
-			throw new Error(`Anki addNote 失败：${msg}`);
+	const tryAdd = async (allowDuplicate: boolean): Promise<number | null> => {
+		try {
+			return await client.addNote({
+				deckName,
+				modelName,
+				fields,
+				tags,
+				allowDuplicate,
+			});
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			const looksDuplicate = /duplicate|重复/i.test(msg);
+			if (looksDuplicate) {
+				return null;
+			}
+			const looksEmpty = /empty|为空/i.test(msg);
+			const hint = looksEmpty
+				? '（多为 Anki 模板仍用旧字段 Front/Back，或正面字段为空。已尝试兼容写入；请到插件设置对该模板点「强制更新」后重试）'
+				: '';
+			throw new Error(`Anki addNote 失败：${msg}${hint}`);
 		}
-	}
+	};
 
+	let createdId = await tryAdd(false);
 	if (createdId != null) {
 		return { noteId: createdId, created: true };
 	}
@@ -199,6 +344,13 @@ async function upsertAnkiNote(
 	const overwritten = await findAndOverwriteDuplicate();
 	if (overwritten != null) {
 		return { noteId: overwritten, created: false };
+	}
+
+	// Last resort after deck deletion / scope quirks: allow duplicate then
+	// we still prefer a real note id over failing the sync.
+	createdId = await tryAdd(true);
+	if (createdId != null) {
+		return { noteId: createdId, created: true };
 	}
 
 	throw new Error(
@@ -292,6 +444,42 @@ export async function syncCardToAnki(
 		await options?.mediaCache?.saveNow();
 	}
 
+	const frontHtml = (payload.fields[FIELD_FRONT] ?? '').trim();
+	const headHtml = (payload.fields[FIELD_HEAD] ?? '').trim();
+	const backHtml = (payload.fields[FIELD_BACK] ?? '').trim();
+	const plainFallback = (card.front || card.navTitle || '').trim();
+	if (!frontHtml && !headHtml && !backHtml && !plainFallback) {
+		throw new Error(
+			'卡片正面/标题/背面渲染后均为空，Anki 无法创建笔记。请检查正文与公式（$…$）是否成对。',
+		);
+	}
+	// Anki empty-note check uses fields on the card Front template; ensure
+	// Front is non-empty when we only have Head (title-only / legacy templates).
+	if (!frontHtml && headHtml) {
+		payload.fields[FIELD_FRONT] = headHtml;
+		payload.fields[FIELD_HEAD] = '';
+	}
+
+	// If Anki's live Front template still uses legacy {{Front}} (or is blank),
+	// push current plugin templates so addNote sees the fields we fill.
+	try {
+		const live = await client.modelTemplates(templateId);
+		const frontSides = Object.values(live)
+			.map((t) => t.Front)
+			.join('\n');
+		const referenced = fieldNamesInTemplateHtml(frontSides);
+		const usesObDeck = referenced.some((n) => n.startsWith('ob-deck-'));
+		const blankFront = !frontSides.trim();
+		if (blankFront || (referenced.length > 0 && !usesObDeck)) {
+			await ensureDeckTemplateModel(client, templateId, style, true);
+			settings.ankiTemplateSyncedVersion =
+				settings.deckTemplateStyleVersion ?? 0;
+			await options?.persistSettings?.();
+		}
+	} catch {
+		/* non-fatal; ensureFieldsNonEmptyForAnki still dual-writes Front/Back */
+	}
+
 	const upserted = await upsertAnkiNote(client, {
 		noteId: card.noteId,
 		deckName,
@@ -299,15 +487,16 @@ export async function syncCardToAnki(
 		fields: payload.fields,
 		tags: payload.tags,
 		deckTagsEnabled: settings.deckTagsEnabled,
+		plainFallback,
 	});
 
-	// Card mode stores id in YAML `deckID`; head/list use `<!--ID-->` markers.
+	// Card mode → always persist YAML `deckID` (and migrate legacy `<!--ID-->`).
+	// Head/list → write `<!--ID-->` when missing or note id changed.
 	const needsIdWrite =
+		card.deckClass === 'card' ||
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
-		(card.deckClass === 'card'
-			? card.noteId === undefined
-			: !card.idMarker);
+		!card.idMarker;
 
 	let pendingIdWrite: PendingIdMarkerWrite | undefined;
 	if (needsIdWrite) {

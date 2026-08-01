@@ -83,6 +83,10 @@ export function extractMathForAnki(markdown: string): {
 		return placeholderFor(index);
 	});
 
+	// Escape leftover `$` so Obsidian MathJax won't swallow the rest of the
+	// line (e.g. unclosed `$ax^2 + bx + c`) and render an empty field.
+	text = text.replace(/\$/g, '\\$');
+
 	text = unshieldSegments(text, shields);
 	return { markdown: text, slots };
 }

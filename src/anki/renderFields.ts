@@ -24,6 +24,25 @@ function stripObsidianUiChrome(host: HTMLElement): void {
 	});
 }
 
+function escapeHtmlText(text: string): string {
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;');
+}
+
+/** True when HTML has no visible text (Anki treats these notes as empty). */
+function isVisuallyEmptyHtml(html: string): boolean {
+	const text = html
+		.replace(/<br\s*\/?>/gi, '\n')
+		.replace(/<[^>]+>/g, '')
+		.replace(/&nbsp;/gi, ' ')
+		.replace(/\u200b/g, '')
+		.trim();
+	return text.length === 0;
+}
+
 /**
  * Render markdown to HTML using Obsidian's MarkdownRenderer.
  * Strips editor chrome (copy/run buttons) that would otherwise appear in Anki.
@@ -84,7 +103,12 @@ export async function renderFieldWithMedia(
 		prepared.markdown,
 		sourcePath,
 	);
-	const withMath = injectAnkiMath(rawHtml, prepared.slots);
+	let withMath = injectAnkiMath(rawHtml, prepared.slots);
+	// Obsidian can yield empty HTML for broken math / odd headings; keep a
+	// plain-text fallback so Anki never gets a fully empty note field.
+	if (isVisuallyEmptyHtml(withMath) && text.trim()) {
+		withMath = `<p>${escapeHtmlText(text)}</p>`;
+	}
 	const post = await processRenderedHtmlMedia(
 		app,
 		withMath,
