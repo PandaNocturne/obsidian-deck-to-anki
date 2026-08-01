@@ -29,8 +29,10 @@ import {
 	FIELD_BACKLINK,
 	FIELD_FRONT,
 	FIELD_HEAD,
+	FIELD_ID,
 	FIELD_TAGS,
 	FIELD_TREE,
+	provisionalDeckIdField,
 	type DeckTemplateId,
 } from './templates';
 
@@ -79,8 +81,10 @@ function resolveDeckTemplate(
  * Head = navTitle; front is body under the heading (never includes the title line).
  *
  * Card mode (no navTitle): all content → `ob-deck-front`, head stays empty.
- * Title-only head cards: content → `ob-deck-front` (model first field / AnkiConnect).
+ * Title-only head cards: content → `ob-deck-front`.
  * Head + body: title → head, body → front.
+ *
+ * AnkiConnect first field is always `ob-deck-id` (not head/front).
  */
 export function splitCardHeadAndFront(card: CardNode): {
 	headMarkdown: string;
@@ -224,12 +228,13 @@ export async function buildAnkiNoteFieldPayload(
 		deckName,
 		modelName,
 		fields: {
+			[FIELD_ID]: provisionalDeckIdField(card),
 			[FIELD_HEAD]: headField,
 			[FIELD_FRONT]: frontField,
 			[FIELD_BACK]: back.html,
 			[FIELD_TAGS]: tagsHtml,
-			[FIELD_BACKLINK]: cardBacklinkHtml,
 			[FIELD_TREE]: treeHtml,
+			[FIELD_BACKLINK]: cardBacklinkHtml,
 		},
 		tags,
 		assets: dedupeMediaAssets([

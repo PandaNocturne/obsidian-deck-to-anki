@@ -59,11 +59,20 @@ export class AnkiConnectClient {
 	async modelFieldAdd(
 		modelName: string,
 		fieldName: string,
+		index?: number,
 	): Promise<void> {
-		await this.invoke('modelFieldAdd', {
+		const params: {
+			modelName: string;
+			fieldName: string;
+			index?: number;
+		} = {
 			modelName,
 			fieldName,
-		});
+		};
+		if (index !== undefined) {
+			params.index = index;
+		}
+		await this.invoke('modelFieldAdd', params);
 	}
 
 	async modelFieldRename(

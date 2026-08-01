@@ -2,6 +2,7 @@ import type { AnkiConnectClient } from './AnkiConnectClient';
 import {
 	FIELD_BACK,
 	FIELD_FRONT,
+	FIELD_ID,
 	FIELD_TREE,
 	MODEL_FIELDS,
 	isReversibleDeckTemplate,
@@ -45,6 +46,28 @@ function buildCardTemplates(
 	];
 }
 
+/** Reposition every known field to MODEL_FIELDS order (id first). */
+async function ensureModelFieldOrder(
+	client: AnkiConnectClient,
+	templateId: DeckTemplateId,
+	warnings: string[],
+): Promise<void> {
+	for (let i = 0; i < MODEL_FIELDS.length; i++) {
+		const fieldName = MODEL_FIELDS[i]!;
+		const names = await client.modelFieldNames(templateId);
+		const at = names.indexOf(fieldName);
+		if (at < 0 || at === i) {
+			continue;
+		}
+		try {
+			await client.modelFieldReposition(templateId, fieldName, i);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			warnings.push(`调整字段顺序 ${fieldName}→${i} 失败：${msg}`);
+		}
+	}
+}
+
 /**
  * Migrate legacy Front/Back/DeckBacklink → ob-deck-* and add any missing fields.
  * Safe to call on every sync.
@@ -74,32 +97,38 @@ export async function ensureModelFields(
 
 	existing = await client.modelFieldNames(templateId);
 	const have = new Set(existing);
-	for (const fieldName of MODEL_FIELDS) {
+	for (let i = 0; i < MODEL_FIELDS.length; i++) {
+		const fieldName = MODEL_FIELDS[i]!;
 		if (have.has(fieldName)) {
 			continue;
 		}
 		try {
-			await client.modelFieldAdd(templateId, fieldName);
+			await client.modelFieldAdd(templateId, fieldName, i);
 			have.add(fieldName);
 		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			throw new Error(
-				`笔记类型 ${templateId} 缺少字段 ${fieldName}，自动添加失败：${msg}`,
-			);
+			// Older AnkiConnect may not accept index; add then reorder.
+			try {
+				await client.modelFieldAdd(templateId, fieldName);
+				have.add(fieldName);
+			} catch (error2) {
+				const msg =
+					error2 instanceof Error ? error2.message : String(error2);
+				const first =
+					error instanceof Error ? error.message : String(error);
+				throw new Error(
+					`笔记类型 ${templateId} 缺少字段 ${fieldName}，自动添加失败：${msg || first}`,
+				);
+			}
 		}
 	}
 
-	// Card mode leaves head empty; AnkiConnect requires fields[0] non-empty.
-	existing = await client.modelFieldNames(templateId);
-	if (existing[0] !== FIELD_FRONT && existing.includes(FIELD_FRONT)) {
-		try {
-			await client.modelFieldReposition(templateId, FIELD_FRONT, 0);
-		} catch (error) {
-			const msg = error instanceof Error ? error.message : String(error);
-			warnings.push(
-				`调整字段顺序 ${FIELD_FRONT}→首位失败：${msg}`,
-			);
-		}
+	await ensureModelFieldOrder(client, templateId, warnings);
+
+	const ordered = await client.modelFieldNames(templateId);
+	if (ordered[0] !== FIELD_ID) {
+		warnings.push(
+			`笔记类型 ${templateId} 首字段应为 ${FIELD_ID}（当前为 ${ordered[0] ?? '无'}）`,
+		);
 	}
 
 	return warnings;

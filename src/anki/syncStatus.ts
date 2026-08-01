@@ -305,13 +305,15 @@ function payloadsMatch(
 	if (!tagsEqual(local.tags, anki.tags)) {
 		return false;
 	}
+	// Skip ob-deck-id: identity only, not shown on cards; provisional→real
+	// noteId rewrite must not mark content as modified.
 	const keys = [
 		FIELD_HEAD,
 		FIELD_FRONT,
 		FIELD_BACK,
 		FIELD_TAGS,
-		FIELD_BACKLINK,
 		FIELD_TREE,
+		FIELD_BACKLINK,
 	] as const;
 	for (const key of keys) {
 		if (

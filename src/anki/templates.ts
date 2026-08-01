@@ -106,32 +106,46 @@ export function sanitizeDeckTemplateId(raw: string): string {
 }
 
 /**
- * Field names on ob-deck-* models.
- * Parse fields: front / head / back / tags
- * Custom fields: backlink (card jump) / tree (deck crumbs)
+ * Field names on ob-deck-* models (stable order).
  *
- * `ob-deck-front` is first: AnkiConnect rejects addNote when fields[0] is blank,
- * and card-mode notes keep `ob-deck-head` empty.
+ * `ob-deck-id` is first so AnkiConnect always has a non-empty fields[0].
+ * It is not shown on card Front/Back HTML templates.
  */
 export const MODEL_FIELDS = [
-	'ob-deck-front',
+	'ob-deck-id',
 	'ob-deck-head',
+	'ob-deck-front',
 	'ob-deck-back',
 	'ob-deck-tags',
-	'ob-deck-backlink',
 	'ob-deck-tree',
+	'ob-deck-backlink',
 ] as const;
 
 export type ModelFieldName = (typeof MODEL_FIELDS)[number];
 
+/** Stable identity for AnkiConnect first-field / duplicate scope. Not on card HTML. */
+export const FIELD_ID: ModelFieldName = 'ob-deck-id';
 export const FIELD_HEAD: ModelFieldName = 'ob-deck-head';
 export const FIELD_FRONT: ModelFieldName = 'ob-deck-front';
 export const FIELD_BACK: ModelFieldName = 'ob-deck-back';
 export const FIELD_TAGS: ModelFieldName = 'ob-deck-tags';
-/** Link that opens the current card in Obsidian. */
-export const FIELD_BACKLINK: ModelFieldName = 'ob-deck-backlink';
 /** Deck tree crumbs (一级 > 牌组2 > …). */
 export const FIELD_TREE: ModelFieldName = 'ob-deck-tree';
+/** Link that opens the current card in Obsidian. */
+export const FIELD_BACKLINK: ModelFieldName = 'ob-deck-backlink';
+
+/** Value written to `ob-deck-id` before Anki assigns a note id. */
+export function provisionalDeckIdField(card: {
+	noteId?: number;
+	sourceFilePath?: string;
+	lineStart: number;
+}): string {
+	if (card.noteId !== undefined && card.noteId > 0) {
+		return String(card.noteId);
+	}
+	const path = card.sourceFilePath?.trim() || 'unknown';
+	return `dta:${path}:${card.lineStart}`;
+}
 
 export interface DeckTemplateStyle {
 	/** Anki card Front side HTML. */

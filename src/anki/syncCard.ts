@@ -14,6 +14,8 @@ import {
 	FIELD_BACK,
 	FIELD_FRONT,
 	FIELD_HEAD,
+	FIELD_ID,
+	provisionalDeckIdField,
 	type DeckTemplateId,
 } from './templates';
 import {
@@ -117,8 +119,8 @@ function fieldNamesInTemplateHtml(html: string): string[] {
 /**
  * Make sure addNote won't hit "cannot create note because it is empty".
  *
- * AnkiConnect checks the model's **first field** (`note.fields[0]`). We keep
- * `ob-deck-front` first so card-mode notes can leave `ob-deck-head` empty.
+ * AnkiConnect checks the model's **first field** (`note.fields[0]`). That is
+ * always `ob-deck-id` (stable identity; not shown on card HTML).
  *
  * Also mirrors into legacy Front/Back and fills blank Front-template fields.
  */
@@ -127,12 +129,19 @@ function ensureFieldsNonEmptyForAnki(
 	allowed: Set<string>,
 	frontTemplateHtml: string,
 	plainFallback: string,
-	firstFieldName?: string,
-	options?: { keepHeadEmpty?: boolean },
+	options?: {
+		keepHeadEmpty?: boolean;
+		deckIdValue?: string;
+	},
 ): void {
 	const keepHeadEmpty = options?.keepHeadEmpty === true;
 	if (keepHeadEmpty) {
 		fields[FIELD_HEAD] = '';
+	}
+
+	const idValue = (options?.deckIdValue ?? fields[FIELD_ID] ?? '').trim();
+	if (allowed.has(FIELD_ID) && idValue) {
+		fields[FIELD_ID] = idValue;
 	}
 
 	const front = fields[FIELD_FRONT] ?? '';
@@ -146,27 +155,8 @@ function ensureFieldsNonEmptyForAnki(
 			? `<p>${escapeHtmlText(plainFallback.trim())}</p>`
 			: '');
 
-	if (!best) {
-		return;
-	}
-
-	// Card / primary content always lands in ob-deck-front when missing.
-	if (!fieldHasContent(fields[FIELD_FRONT])) {
+	if (best && !fieldHasContent(fields[FIELD_FRONT])) {
 		fields[FIELD_FRONT] = best;
-	}
-
-	// AnkiConnect: first field must be non-empty. Prefer front; never refill
-	// head when card mode requires it empty.
-	if (
-		firstFieldName &&
-		allowed.has(firstFieldName) &&
-		!fieldHasContent(fields[firstFieldName])
-	) {
-		if (firstFieldName === FIELD_HEAD && keepHeadEmpty) {
-			// Front should already hold content; leave head blank.
-		} else {
-			fields[firstFieldName] = best;
-		}
 	}
 
 	if (keepHeadEmpty) {
@@ -174,11 +164,15 @@ function ensureFieldsNonEmptyForAnki(
 	}
 
 	// Legacy Basic-style fields (still present when rename failed / mixed models).
-	if (allowed.has('Front') && !fieldHasContent(fields.Front)) {
+	if (best && allowed.has('Front') && !fieldHasContent(fields.Front)) {
 		fields.Front = fields[FIELD_FRONT] || best;
 	}
 	if (allowed.has('Back') && !fieldHasContent(fields.Back)) {
 		fields.Back = fields[FIELD_BACK] || '';
+	}
+
+	if (!best) {
+		return;
 	}
 
 	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
@@ -194,7 +188,7 @@ function ensureFieldsNonEmptyForAnki(
 	const target =
 		referenced.find((name) => allowed.has(name) || name in fields) ??
 		referenced[0]!;
-	if (target === FIELD_HEAD && keepHeadEmpty) {
+	if (target === FIELD_ID || (target === FIELD_HEAD && keepHeadEmpty)) {
 		if (allowed.has(FIELD_FRONT)) {
 			fields[FIELD_FRONT] = best;
 		}
@@ -240,6 +234,8 @@ async function upsertAnkiNote(
 		plainFallback?: string;
 		/** Card mode: keep ob-deck-head empty; content stays in ob-deck-front. */
 		keepHeadEmpty?: boolean;
+		/** Value for `ob-deck-id` (first field). */
+		deckIdValue?: string;
 	},
 ): Promise<{ noteId: number; created: boolean }> {
 	const { deckName, modelName, tags, deckTagsEnabled } = input;
@@ -257,6 +253,11 @@ async function upsertAnkiNote(
 			`笔记类型「${modelName}」缺少字段 ${FIELD_FRONT}（或 Front）。请打开插件设置点击「强制更新」，或确认 AnkiConnect 可用后重试同步。`,
 		);
 	}
+	if (!allowed.has(FIELD_ID)) {
+		throw new Error(
+			`笔记类型「${modelName}」缺少首字段 ${FIELD_ID}。请打开插件设置点击「强制更新」后重试同步。`,
+		);
+	}
 
 	let liveFrontTemplates = '';
 	try {
@@ -268,14 +269,20 @@ async function upsertAnkiNote(
 		liveFrontTemplates = '';
 	}
 
-	const firstFieldName = modelFields[0];
+	const deckIdValue = (
+		input.deckIdValue ??
+		fields[FIELD_ID] ??
+		''
+	).trim();
 	ensureFieldsNonEmptyForAnki(
 		fields,
 		allowed,
 		liveFrontTemplates,
 		input.plainFallback ?? '',
-		firstFieldName,
-		{ keepHeadEmpty: input.keepHeadEmpty === true },
+		{
+			keepHeadEmpty: input.keepHeadEmpty === true,
+			deckIdValue,
+		},
 	);
 
 	if (
@@ -287,17 +294,14 @@ async function upsertAnkiNote(
 			'卡片正面渲染后为空，Anki 无法创建笔记。请检查正文，或到插件设置对该模板「强制更新」。',
 		);
 	}
-	if (
-		firstFieldName &&
-		allowed.has(firstFieldName) &&
-		!fieldHasContent(fields[firstFieldName])
-	) {
+	if (!(fields[FIELD_ID] ?? '').trim()) {
 		throw new Error(
-			`笔记首字段「${firstFieldName}」为空，AnkiConnect 会拒绝创建。请检查标题/正文，或到插件设置对该模板「强制更新」。`,
+			`笔记首字段「${FIELD_ID}」为空，AnkiConnect 会拒绝创建。请重试同步或强制更新模板。`,
 		);
 	}
 
 	const applyUpdate = async (noteId: number): Promise<void> => {
+		fields[FIELD_ID] = String(noteId);
 		await client.updateNoteFields(noteId, fields);
 		const note = await client.noteInfo(noteId);
 		if (note?.cards?.length) {
@@ -380,7 +384,7 @@ async function upsertAnkiNote(
 			}
 			const looksEmpty = /empty|为空/i.test(msg);
 			const hint = looksEmpty
-				? '（AnkiConnect 要求首字段 ob-deck-front 非空；或模板仍用旧 Front/Back。请到插件设置对该模板点「强制更新」后重试）'
+				? '（AnkiConnect 要求首字段 ob-deck-id 非空；或模板字段未更新。请到插件设置对该模板点「强制更新」后重试）'
 				: '';
 			throw new Error(`Anki addNote 失败：${msg}${hint}`);
 		}
@@ -388,6 +392,16 @@ async function upsertAnkiNote(
 
 	let createdId = await tryAdd(false);
 	if (createdId != null) {
+		// Persist real Anki note id into the first field (was provisional).
+		fields[FIELD_ID] = String(createdId);
+		try {
+			await client.updateNoteFields(createdId, {
+				[FIELD_ID]: String(createdId),
+			});
+		} catch {
+			/* non-fatal; next sync will rewrite */
+		}
+		await syncNoteTags(client, createdId, tags, deckTagsEnabled);
 		return { noteId: createdId, created: true };
 	}
 
@@ -400,6 +414,15 @@ async function upsertAnkiNote(
 	// we still prefer a real note id over failing the sync.
 	createdId = await tryAdd(true);
 	if (createdId != null) {
+		fields[FIELD_ID] = String(createdId);
+		try {
+			await client.updateNoteFields(createdId, {
+				[FIELD_ID]: String(createdId),
+			});
+		} catch {
+			/* non-fatal */
+		}
+		await syncNoteTags(client, createdId, tags, deckTagsEnabled);
 		return { noteId: createdId, created: true };
 	}
 
@@ -527,6 +550,7 @@ export async function syncCardToAnki(
 	if (card.deckClass === 'card') {
 		payload.fields[FIELD_HEAD] = '';
 	}
+	payload.fields[FIELD_ID] = provisionalDeckIdField(card);
 
 	const upserted = await upsertAnkiNote(client, {
 		noteId: card.noteId,
@@ -537,6 +561,7 @@ export async function syncCardToAnki(
 		deckTagsEnabled: settings.deckTagsEnabled,
 		plainFallback,
 		keepHeadEmpty: card.deckClass === 'card',
+		deckIdValue: payload.fields[FIELD_ID],
 	});
 
 	// Card mode → always persist YAML `deckID` (and migrate legacy `<!--ID-->`).

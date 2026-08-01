@@ -526,12 +526,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				desc: 'File 模式：指向子牌组笔记的 wiki 链接。',
 			},
 			{
-				key: 'deckNumbering',
-				desc: '是否在同步树与 Anki 牌组路径显示序号。',
-			},
-			{
 				key: 'deckID',
 				desc: 'Card 模式：Anki 笔记 ID（同步后写入 YAML，不再写文件底部）。',
+			},
+			{
+				key: 'deckNumbering',
+				desc: '是否在同步树与 Anki 牌组路径显示序号。',
 			},
 		];
 		const yamlBody = yamlTable.createEl('tbody');
@@ -1288,6 +1288,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		const rows: Array<{ field: string; desc: string }> = [
 			{
+				field: 'ob-deck-id',
+				desc: '笔记身份字段（模型首字段，供 AnkiConnect 使用）；不在卡片正反面 HTML 中显示。',
+			},
+			{
 				field: 'ob-deck-head',
 				desc: '卡片标题（导航标题）；与正面正文分开存储。',
 			},
@@ -1304,12 +1308,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				desc: 'Obsidian 标签展示；可同步为 Anki 笔记标签。',
 			},
 			{
-				field: 'ob-deck-backlink',
-				desc: '回链到 Obsidian 当前卡片（标题 / 块 / 文件）。',
-			},
-			{
 				field: 'ob-deck-tree',
 				desc: '牌组路径面包屑（如 一级 > 子牌组）。',
+			},
+			{
+				field: 'ob-deck-backlink',
+				desc: '回链到 Obsidian 当前卡片（标题 / 块 / 文件）。',
 			},
 		];
 
