@@ -177,9 +177,24 @@ export class SyncPanelUI {
 		this.options = options;
 		this.state.parseType = this.plugin.settings.defaultDeckType || 'head';
 		this.state.cardLevel = this.defaultCardHeadingLevel();
+		this.syncAutoSelectDeletedSetting();
 		if (options.tabsMode === 'forest') {
 			this.state.tab = 'all';
 		}
+	}
+
+	private syncAutoSelectDeletedSetting(): void {
+		this.state.autoSelectDeleted =
+			this.plugin.settings.autoSelectDeletedCards !== false;
+	}
+
+	/** After status check attaches Anki-only rows, optionally check them. */
+	private applyAutoSelectDeleted(): void {
+		this.syncAutoSelectDeletedSetting();
+		if (!this.state.autoSelectDeleted || !this.viewRoot) {
+			return;
+		}
+		this.state.selectDeletedPhantoms(this.viewRoot);
 	}
 
 	/** Plugin setting default for head-mode card level (YAML deckLevel fallback). */
@@ -348,6 +363,7 @@ export class SyncPanelUI {
 			if (this.busy) {
 				return;
 			}
+			this.syncAutoSelectDeletedSetting();
 			if (this.state.areAllLeavesSelected()) {
 				this.state.deselectAll();
 			} else {
@@ -772,6 +788,9 @@ export class SyncPanelUI {
 			}
 
 			this.ankiStatusChecked = true;
+			if (result.deletedCount > 0) {
+				this.applyAutoSelectDeleted();
+			}
 			// Keep checkboxes; only refresh status colors on checked cards.
 			this.renderBody();
 
@@ -884,6 +903,7 @@ export class SyncPanelUI {
 			];
 		}
 
+		this.syncAutoSelectDeletedSetting();
 		this.state.resetFromTree(parsed.root, {
 			parseType:
 				(useSessionOnParseTarget
@@ -919,6 +939,7 @@ export class SyncPanelUI {
 		this.forestWarnings = result.warnings;
 		this.focusChildLabel = null;
 
+		this.syncAutoSelectDeletedSetting();
 		this.state.resetFromTree(result.root, {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
 			cardLevel: this.defaultCardHeadingLevel(),
@@ -1539,6 +1560,9 @@ export class SyncPanelUI {
 				{ root: this.viewRoot ?? undefined, mediaCache: this.plugin.mediaCompressCache },
 			);
 			this.ankiStatusChecked = true;
+			if (result.deletedCount > 0) {
+				this.applyAutoSelectDeleted();
+			}
 			this.renderBody();
 
 			if (result.warning) {

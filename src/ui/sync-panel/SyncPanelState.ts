@@ -25,6 +25,8 @@ export class SyncPanelState {
 	parseType: DeckType = 'head';
 	/** Active card heading level for parse. */
 	cardLevel = 4;
+	/** When true, deleted phantoms are included in select-all / auto-select. */
+	autoSelectDeleted = true;
 	private root: DeckNode | null = null;
 
 	resetFromTree(
@@ -97,11 +99,28 @@ export class SyncPanelState {
 	private shouldSelectLeaf(
 		node: CardNode | DeletedAnkiCardNode,
 	): boolean {
+		if (node.kind === 'deleted-anki') {
+			return this.autoSelectDeleted;
+		}
 		// Empty title-only heads stay unchecked; synced greens stay checked.
 		if (node.kind === 'card' && isHeadTitleOnlyCard(node)) {
 			return false;
 		}
 		return true;
+	}
+
+	/** Check every deleted phantom under the tree (does not clear other selection). */
+	selectDeletedPhantoms(root: DeckNode): void {
+		const walk = (node: DeckNode) => {
+			for (const child of node.children) {
+				if (child.kind === 'deleted-anki') {
+					this.selected.add(child.id);
+				} else if (child.kind === 'deck') {
+					walk(child);
+				}
+			}
+		};
+		walk(root);
 	}
 
 	private selectAll(node: SyncSelectableNode): void {

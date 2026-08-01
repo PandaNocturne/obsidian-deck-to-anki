@@ -90,6 +90,11 @@ export interface DeckToAnkiSettings {
 	 */
 	autoCheckCurrentNote: boolean;
 	/**
+	 * When status check finds Anki-only (deleted) notes, auto-check them
+	 * in the sync panel. Default on.
+	 */
+	autoSelectDeletedCards: boolean;
+	/**
 	 * Sync deck sibling indexes into Anki front / tree (e.g. `1.2. `).
 	 * Notes may override via YAML `deckNumbering`. Default on.
 	 */
@@ -126,6 +131,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
+	autoSelectDeletedCards: true,
 	deckNumberingEnabled: true,
 	mediaCompressEnabled: true,
 	mediaCompressQuality: 75,
@@ -466,6 +472,22 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.onChange(async (value) => {
 						this.plugin.settings.deckViewMode =
 							value as DeckViewMode;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('自动勾选已删除卡片')
+			.setDesc(
+				'状态检测发现「仅 Anki 存在」的卡片时自动勾选，便于 Update/Force 一并删除。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(
+						this.plugin.settings.autoSelectDeletedCards !== false,
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.autoSelectDeletedCards = value;
 						await this.plugin.saveSettings();
 					}),
 			);
