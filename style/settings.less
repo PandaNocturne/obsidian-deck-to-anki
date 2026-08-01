@@ -50,13 +50,13 @@
 		border-radius: 0;
 		background: transparent;
 
-		& + .dta-settings-section {
+		&+.dta-settings-section {
 			padding-top: 0.85rem;
 			border-top: 1px solid var(--background-modifier-border);
 		}
 	}
 
-	.dta-settings-panel > .dta-settings-section:last-child {
+	.dta-settings-panel>.dta-settings-section:last-child {
 		margin-bottom: 0.35rem;
 	}
 
@@ -317,11 +317,9 @@
 		}
 
 		&.is-import {
-			background: color-mix(
-				in srgb,
-				var(--color-orange, #d97706) 55%,
-				var(--interactive-accent)
-			);
+			background: color-mix(in srgb,
+					var(--color-orange, #d97706) 55%,
+					var(--interactive-accent));
 		}
 	}
 
