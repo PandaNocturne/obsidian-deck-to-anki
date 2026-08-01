@@ -318,6 +318,13 @@ export function clearAllDeckYaml(content: string): string {
 	return stripEmptyFrontmatter(next);
 }
 
+/** Remove only YAML `deckID` / legacy `deckId` (keeps other deck YAML). */
+export function removeDeckIdYaml(content: string): string {
+	return stripEmptyFrontmatter(
+		applyFrontmatterUpdates(content, {}, new Set(['deckID', 'deckId'])),
+	);
+}
+
 /** Insert or update a single YAML frontmatter property (creates FM if missing). */
 export function upsertYamlProperty(
 	content: string,
