@@ -792,6 +792,10 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-action.is-loading svg {
   animation: dta-sync-spin 0.8s linear infinite;
 }
+.dta-sync-action.is-awaiting-check:not(:disabled):not(.is-loading) {
+  opacity: 0.55;
+  cursor: pointer;
+}
 .dta-sync-check {
   flex-shrink: 0;
   margin: 0;
@@ -877,6 +881,7 @@ if you want to view the source, please visit the github repository of this plugi
   font-weight: 600;
   letter-spacing: 0.01em;
   transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+  /* Soft hint only — still clickable (shows Notice to check first). */
 }
 .dta-sync-footer-btn:hover:not(:disabled) {
   background: var(--background-modifier-hover);
@@ -891,6 +896,10 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-footer-btn.is-loading {
   opacity: 1;
   cursor: progress;
+}
+.dta-sync-footer-btn.is-awaiting-check:not(:disabled):not(.is-loading) {
+  opacity: 0.72;
+  cursor: pointer;
 }
 .dta-sync-footer-btn.mod-cta {
   background: var(--interactive-accent);

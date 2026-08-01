@@ -95,6 +95,11 @@ export interface DeckToAnkiSettings {
 	 */
 	autoSelectDeletedCards: boolean;
 	/**
+	 * Require a successful Anki status check before Force/Update sync.
+	 * Default on.
+	 */
+	requireCheckBeforeSync: boolean;
+	/**
 	 * Sync deck sibling indexes into Anki front / tree (e.g. `1.2. `).
 	 * Notes may override via YAML `deckNumbering`. Default on.
 	 */
@@ -132,6 +137,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
 	autoSelectDeletedCards: true,
+	requireCheckBeforeSync: true,
 	deckNumberingEnabled: true,
 	mediaCompressEnabled: true,
 	mediaCompressQuality: 75,
@@ -488,6 +494,22 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					)
 					.onChange(async (value) => {
 						this.plugin.settings.autoSelectDeletedCards = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('同步前需要检测')
+			.setDesc(
+				'开启后须先对照 Anki 完成状态检测，才能 Force/Update；关闭后可不检测直接同步。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(
+						this.plugin.settings.requireCheckBeforeSync !== false,
+					)
+					.onChange(async (value) => {
+						this.plugin.settings.requireCheckBeforeSync = value;
 						await this.plugin.saveSettings();
 					}),
 			);

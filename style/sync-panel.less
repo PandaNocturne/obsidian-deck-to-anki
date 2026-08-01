@@ -547,6 +547,11 @@
 			animation: dta-sync-spin 0.8s linear infinite;
 		}
 	}
+
+	&.is-awaiting-check:not(:disabled):not(.is-loading) {
+		opacity: 0.55;
+		cursor: pointer;
+	}
 }
 
 .dta-sync-check {
@@ -667,6 +672,12 @@
 	&.is-loading {
 		opacity: 1;
 		cursor: progress;
+	}
+
+	/* Soft hint only — still clickable (shows Notice to check first). */
+	&.is-awaiting-check:not(:disabled):not(.is-loading) {
+		opacity: 0.72;
+		cursor: pointer;
 	}
 
 	&.mod-cta {

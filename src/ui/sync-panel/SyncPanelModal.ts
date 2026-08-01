@@ -510,6 +510,19 @@ export class SyncPanelUI {
 			el.disabled = busy;
 		}
 
+		// Never hard-disable Force/Update for "needs check" — keep clickable for Notice.
+		const needCheckHint = !busy && this.mustCheckBeforeSync();
+		this.updateBtnEl.disabled = busy;
+		this.forceBtnEl.disabled = busy;
+		this.updateBtnEl.toggleClass('is-awaiting-check', needCheckHint);
+		this.forceBtnEl.toggleClass('is-awaiting-check', needCheckHint);
+		this.updateBtnEl.title = needCheckHint
+			? '请先检测同步状态后再同步'
+			: '同步勾选卡片（跳过已同步）';
+		this.forceBtnEl.title = needCheckHint
+			? '请先检测同步状态后再同步'
+			: '强制同步勾选卡片（含已同步）';
+
 		this.checkBtnEl.toggleClass('is-loading', this.busy === 'check');
 		setIcon(
 			this.checkBtnEl,
@@ -548,10 +561,13 @@ export class SyncPanelUI {
 						: 'refresh-cw';
 				btn.disabled = busy;
 				btn.toggleClass('is-loading', active);
+				btn.toggleClass('is-awaiting-check', needCheckHint);
 				setIcon(btn, active ? 'loader-circle' : idleIcon);
 				btn.title = busy
 					? '进行中…'
-					: (btn.getAttribute('aria-label') ?? '');
+					: needCheckHint
+						? '请先检测同步状态后再同步'
+						: (btn.getAttribute('aria-label') ?? '');
 			});
 	}
 
@@ -568,19 +584,41 @@ export class SyncPanelUI {
 		this.selectAllBtnEl.title = allSelected ? '取消全选' : '全选';
 	}
 
+	/** True when Force/Update should wait for a status check. */
+	private mustCheckBeforeSync(): boolean {
+		return (
+			this.plugin.settings.requireCheckBeforeSync !== false &&
+			!this.ankiStatusChecked
+		);
+	}
+
 	/** Soft-warn the check button until Anki status has been checked. */
 	private refreshCheckBtnHint(): void {
 		if (!this.checkBtnEl) {
 			return;
 		}
-		const needsCheck = !this.ankiStatusChecked && this.busy !== 'check';
+		const requireCheck =
+			this.plugin.settings.requireCheckBeforeSync !== false;
+		const needsCheck =
+			requireCheck && !this.ankiStatusChecked && this.busy !== 'check';
 		this.checkBtnEl.toggleClass('is-needs-check', needsCheck);
 		if (this.busy === 'check') {
 			return;
 		}
 		this.checkBtnEl.title = needsCheck
-			? '尚未检测：点击对照 Anki 检测勾选卡片的同步状态'
+			? '尚未检测：请先检测后再 Force/Update'
 			: '对照 Anki 检测勾选卡片的同步状态';
+	}
+
+	/** Prompt on click (buttons stay enabled) until status has been checked. */
+	private ensureCheckedBeforeSync(): boolean {
+		if (!this.mustCheckBeforeSync()) {
+			return true;
+		}
+		new Notice('请先点击检测，完成检索后再同步');
+		this.statusEl.setText('请先检测后再同步');
+		this.refreshCheckBtnHint();
+		return false;
 	}
 
 	private async handleRefresh(): Promise<void> {
@@ -1118,6 +1156,9 @@ export class SyncPanelUI {
 	private async handleSyncNode(
 		node: DeckNode | CardNode | DeletedAnkiCardNode,
 	): Promise<void> {
+		if (!this.ensureCheckedBeforeSync()) {
+			return;
+		}
 		if (!this.setBusy('sync', node.id)) {
 			return;
 		}
@@ -1655,6 +1696,9 @@ export class SyncPanelUI {
 		skipSynced: boolean;
 		actionLabel: string;
 	}): Promise<void> {
+		if (!this.ensureCheckedBeforeSync()) {
+			return;
+		}
 		const selectedCards = this.collectSelectedCards();
 		const deleted = this.collectSelectedDeleted();
 		const cards = options.skipSynced
