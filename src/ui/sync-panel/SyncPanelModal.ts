@@ -765,6 +765,8 @@ export class SyncPanelUI {
 		removedDeletedNoteIds?: number[];
 		/** Sticky notice to update during incremental recheck. */
 		progress?: ProgressNotice;
+		/** Skip scheduleAutoCheckAfterScan (caller will check itself). */
+		skipAutoCheck?: boolean;
 	}): Promise<void> {
 		const previousTab = this.state.tab;
 		if (options?.preserveTab) {
@@ -772,12 +774,10 @@ export class SyncPanelUI {
 		}
 		const preserveCollapse = options?.preserveTab === true;
 
+		// Always snapshot selection (and any prior status) when preserving UI,
+		// so a rescan after file edits keeps checkboxes.
 		let statusSnapshot: SyncStatusTreeSnapshot | null = null;
-		if (
-			preserveCollapse &&
-			this.ankiStatusChecked &&
-			this.viewRoot
-		) {
+		if (preserveCollapse && this.viewRoot) {
 			statusSnapshot = snapshotSyncStatusTree(this.viewRoot, (id) =>
 				this.state.isSelected(id),
 			);
@@ -852,7 +852,9 @@ export class SyncPanelUI {
 		this.renderBody();
 		this.saveCurrentTabCache();
 
-		const skipAutoCheck = (options?.recheckKeys?.length ?? 0) > 0;
+		const skipAutoCheck =
+			options?.skipAutoCheck === true ||
+			(options?.recheckKeys?.length ?? 0) > 0;
 		if (!skipAutoCheck) {
 			this.scheduleAutoCheckAfterScan();
 		}
@@ -1712,16 +1714,15 @@ export class SyncPanelUI {
 	}
 
 	/**
-	 * Compare selected cards against Anki (toolbar 检查).
-	 * Does not change checkbox selection.
+	 * Rescan the active tab, then compare selected cards against Anki.
+	 * Scan-first avoids stale trees after vault edits.
 	 */
 	private async handleCheckStatus(): Promise<void> {
 		if (!this.viewRoot) {
 			new Notice('没有可检查的牌组');
 			return;
 		}
-		const cards = this.collectSelectedCards();
-		if (cards.length === 0) {
+		if (this.collectSelectedCards().length === 0) {
 			new Notice('请先勾选要检测的卡片');
 			this.statusEl.setText('未勾选卡片');
 			return;
@@ -1730,12 +1731,35 @@ export class SyncPanelUI {
 			return;
 		}
 
-		const progress = new ProgressNotice(
-			`正在检测 ${cards.length} 张勾选卡片…`,
-		);
-		this.statusEl.setText(`正在检测 ${cards.length} 张勾选卡片…`);
-		this.setPanelProgress(0, 1, '准备检测…');
+		const progress = new ProgressNotice('正在扫描…');
+		this.statusEl.setText('正在扫描…');
+		this.setPanelProgress(0, 1, '扫描中…');
+
 		try {
+			// Drop tab cache and cancel background auto-check before rescan.
+			this.tabCaches.delete(this.state.tab);
+			this.bgCheckId += 1;
+
+			await this.reload({
+				preserveTab: true,
+				skipAutoCheck: true,
+				progress,
+			});
+
+			const cards = this.collectSelectedCards();
+			if (cards.length === 0) {
+				const msg = '扫描后未找到原先勾选的卡片';
+				new Notice(msg);
+				this.statusEl.setText(msg);
+				progress.finish(msg, 4000);
+				return;
+			}
+
+			const checkingMsg = `正在检测 ${cards.length} 张勾选卡片…`;
+			progress.setMessage(checkingMsg);
+			this.statusEl.setText(checkingMsg);
+			this.setPanelProgress(0, 1, '准备检测…');
+
 			const result = await prefetchSyncStatusForCards(
 				this.app,
 				this.plugin.settings,
@@ -1748,7 +1772,10 @@ export class SyncPanelUI {
 						window.setTimeout(resolve, 0);
 					});
 				},
-				{ root: this.viewRoot ?? undefined, mediaCache: this.plugin.mediaCompressCache },
+				{
+					root: this.viewRoot ?? undefined,
+					mediaCache: this.plugin.mediaCompressCache,
+				},
 			);
 			this.ankiStatusChecked = true;
 			if (result.deletedCount > 0) {
