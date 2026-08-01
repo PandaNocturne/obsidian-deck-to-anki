@@ -361,20 +361,43 @@
 		}
 	}
 
-	.dta-yaml-field-list {
-		margin: 0 0 0.35rem;
-		padding: 0 0 0 1.1rem;
-		color: var(--text-muted);
+	.dta-field-ref-table {
+		width: 100%;
+		border-collapse: collapse;
+		margin: 0.15rem 0 0.35rem;
 		font-size: 0.85em;
-		line-height: 1.55;
+		line-height: 1.5;
 
-		li {
-			margin: 0.15rem 0;
+		th,
+		td {
+			padding: 0.45rem 0.55rem;
+			text-align: left;
+			vertical-align: top;
+			border-bottom: 1px solid var(--background-modifier-border);
+		}
+
+		th {
+			color: var(--text-muted);
+			font-weight: 600;
+			white-space: nowrap;
+		}
+
+		td {
+			color: var(--text-muted);
+		}
+
+		td:first-child {
+			width: 11.5rem;
+			white-space: nowrap;
 		}
 
 		code {
 			font-size: 0.95em;
 			color: var(--text-normal);
+		}
+
+		tbody tr:last-child td {
+			border-bottom: none;
 		}
 	}
 }

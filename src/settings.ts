@@ -337,14 +337,14 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			text: '同步',
 			attr: { type: 'button' },
 		});
-		const templateTab = tabBar.createEl('button', {
-			cls: 'dta-settings-tab',
-			text: '模板',
-			attr: { type: 'button' },
-		});
 		const fieldsTab = tabBar.createEl('button', {
 			cls: 'dta-settings-tab',
 			text: '字段',
+			attr: { type: 'button' },
+		});
+		const templateTab = tabBar.createEl('button', {
+			cls: 'dta-settings-tab',
+			text: '模板',
 			attr: { type: 'button' },
 		});
 
@@ -359,26 +359,27 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		this.renderSyncSettings(syncPanel);
 		this.renderMediaSettings(syncPanel);
 
+		const fieldsPanel = containerEl.createDiv({
+			cls: 'dta-settings-panel',
+		});
+		this.renderFieldReferenceSettings(fieldsPanel);
+		this.renderCustomFieldSettings(fieldsPanel);
+
 		const templatePanel = containerEl.createDiv({
 			cls: 'dta-settings-panel',
 		});
 		this.renderTemplateSettings(templatePanel);
 
-		const fieldsPanel = containerEl.createDiv({
-			cls: 'dta-settings-panel',
-		});
-		this.renderCustomFieldSettings(fieldsPanel);
-
 		const syncTabs = (): void => {
 			const tab = this.activeSettingsTab;
 			parseTab.toggleClass('is-active', tab === 'parse');
 			syncTab.toggleClass('is-active', tab === 'sync');
-			templateTab.toggleClass('is-active', tab === 'template');
 			fieldsTab.toggleClass('is-active', tab === 'fields');
+			templateTab.toggleClass('is-active', tab === 'template');
 			parsePanel.toggle(tab === 'parse');
 			syncPanel.toggle(tab === 'sync');
-			templatePanel.toggle(tab === 'template');
 			fieldsPanel.toggle(tab === 'fields');
+			templatePanel.toggle(tab === 'template');
 		};
 
 		parseTab.addEventListener('click', () => {
@@ -389,12 +390,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			this.activeSettingsTab = 'sync';
 			syncTabs();
 		});
-		templateTab.addEventListener('click', () => {
-			this.activeSettingsTab = 'template';
-			syncTabs();
-		});
 		fieldsTab.addEventListener('click', () => {
 			this.activeSettingsTab = 'fields';
+			syncTabs();
+		});
+		templateTab.addEventListener('click', () => {
+			this.activeSettingsTab = 'template';
 			syncTabs();
 		});
 		syncTabs();
@@ -493,9 +494,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			'YAML',
 			'YAML 字段与解析结果对应关系。',
 		);
-		const yamlList = yamlSection.createEl('ul', {
-			cls: 'dta-yaml-field-list',
+		const yamlTable = yamlSection.createEl('table', {
+			cls: 'dta-field-ref-table',
 		});
+		const yamlHead = yamlTable.createEl('thead').createEl('tr');
+		yamlHead.createEl('th', { text: '字段' });
+		yamlHead.createEl('th', { text: '说明' });
 		const yamlFields: Array<{ key: string; desc: string }> = [
 			{
 				key: 'deckType',
@@ -526,10 +530,12 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				desc: '是否在同步树与 Anki 牌组路径显示序号。',
 			},
 		];
+		const yamlBody = yamlTable.createEl('tbody');
 		for (const field of yamlFields) {
-			const item = yamlList.createEl('li');
-			item.createEl('code', { text: field.key });
-			item.appendText(` — ${field.desc}`);
+			const tr = yamlBody.createEl('tr');
+			const nameCell = tr.createEl('td');
+			nameCell.createEl('code', { text: field.key });
+			tr.createEl('td', { text: field.desc });
 		}
 	}
 
@@ -1259,6 +1265,57 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Notice(`已重命名为「${name}」`);
 		this.display();
 		return true;
+	}
+
+	private renderFieldReferenceSettings(containerEl: HTMLElement): void {
+		const section = this.beginSection(
+			containerEl,
+			'字段说明',
+			'Anki 笔记类型（ob-deck-*）固定字段含义。',
+		);
+
+		const table = section.createEl('table', {
+			cls: 'dta-field-ref-table',
+		});
+		const thead = table.createEl('thead');
+		const headRow = thead.createEl('tr');
+		headRow.createEl('th', { text: '字段' });
+		headRow.createEl('th', { text: '说明' });
+
+		const rows: Array<{ field: string; desc: string }> = [
+			{
+				field: 'ob-deck-head',
+				desc: '卡片标题（导航标题）；与正面正文分开存储。',
+			},
+			{
+				field: 'ob-deck-front',
+				desc: '卡片正面正文（不含标题时仅正文）。',
+			},
+			{
+				field: 'ob-deck-back',
+				desc: '卡片背面内容。',
+			},
+			{
+				field: 'ob-deck-tags',
+				desc: 'Obsidian 标签展示；可同步为 Anki 笔记标签。',
+			},
+			{
+				field: 'ob-deck-backlink',
+				desc: '回链到 Obsidian 当前卡片（标题 / 块 / 文件）。',
+			},
+			{
+				field: 'ob-deck-tree',
+				desc: '牌组路径面包屑（如 一级 > 子牌组）。',
+			},
+		];
+
+		const tbody = table.createEl('tbody');
+		for (const row of rows) {
+			const tr = tbody.createEl('tr');
+			const nameCell = tr.createEl('td');
+			nameCell.createEl('code', { text: row.field });
+			tr.createEl('td', { text: row.desc });
+		}
 	}
 
 	private renderCustomFieldSettings(containerEl: HTMLElement): void {

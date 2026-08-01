@@ -310,19 +310,38 @@ if you want to view the source, please visit the github repository of this plugi
   color: var(--text-error);
   background: var(--background-modifier-error-hover, var(--background-modifier-hover));
 }
-.deck-to-anki-settings .dta-yaml-field-list {
-  margin: 0 0 0.35rem;
-  padding: 0 0 0 1.1rem;
-  color: var(--text-muted);
+.deck-to-anki-settings .dta-field-ref-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.15rem 0 0.35rem;
   font-size: 0.85em;
-  line-height: 1.55;
+  line-height: 1.5;
 }
-.deck-to-anki-settings .dta-yaml-field-list li {
-  margin: 0.15rem 0;
+.deck-to-anki-settings .dta-field-ref-table th,
+.deck-to-anki-settings .dta-field-ref-table td {
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--background-modifier-border);
 }
-.deck-to-anki-settings .dta-yaml-field-list code {
+.deck-to-anki-settings .dta-field-ref-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.deck-to-anki-settings .dta-field-ref-table td {
+  color: var(--text-muted);
+}
+.deck-to-anki-settings .dta-field-ref-table td:first-child {
+  width: 11.5rem;
+  white-space: nowrap;
+}
+.deck-to-anki-settings .dta-field-ref-table code {
   font-size: 0.95em;
   color: var(--text-normal);
+}
+.deck-to-anki-settings .dta-field-ref-table tbody tr:last-child td {
+  border-bottom: none;
 }
 .deck-to-anki-modal {
   padding: 1rem;

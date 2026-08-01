@@ -396,7 +396,55 @@ export const DEFAULT_CARD_CSS = `.card {
 
 .nightMode .dta-card pre {
   background: #1e293b;
-}`;
+}
+
+.dta-card table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.9em;
+  text-align: left;
+}
+
+.dta-card th,
+.dta-card td {
+  padding: 0.65rem 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.dta-card th {
+  font-weight: 600;
+  color: #0f172a;
+  background-color: #f8fafc;
+}
+
+.dta-card td {
+  color: #334155;
+}
+
+.dta-card tr:nth-child(even) td {
+  background-color: rgba(248, 250, 252, 0.6);
+}
+
+.nightMode .dta-card th,
+.nightMode .dta-card td {
+  border-color: rgba(71, 85, 105, 0.45);
+}
+
+.nightMode .dta-card th {
+  color: #f8fafc;
+  background-color: rgba(30, 41, 59, 0.8);
+}
+
+.nightMode .dta-card td {
+  color: #cbd5e1;
+}
+
+.nightMode .dta-card tr:nth-child(even) td {
+  background-color: rgba(30, 41, 59, 0.3);
+}
+
+`;
 
 export const DEFAULT_CARD_FRONT = `<div class="dta-card">
   {{#ob-deck-head}}
