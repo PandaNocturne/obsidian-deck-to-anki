@@ -45,6 +45,11 @@ export interface DeckToAnkiSettings {
 	 * Anki always stores title in ob-deck-head separately from ob-deck-front.
 	 */
 	headIncludeTitleInFront: boolean;
+	/**
+	 * Parse Obsidian wiki links `[[...]]` into Anki field HTML.
+	 * Default off: plain text only. On: `obsidian://open` (oburi) links.
+	 */
+	wikiLinkEnabled: boolean;
 	/** Default Deck View mode: source (raw) or reading (rendered). */
 	deckViewMode: DeckViewMode;
 	/** AnkiConnect endpoint. */
@@ -125,6 +130,7 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	defaultDeckType: 'head',
 	cardHeadingLevel: DEFAULT_CARD_HEADING_LEVEL,
 	headIncludeTitleInFront: false,
+	wikiLinkEnabled: false,
 	deckViewMode: 'source',
 	ankiConnectUrl: 'http://127.0.0.1:8765',
 	deckTemplate: 'ob-deck-basic',
@@ -250,6 +256,9 @@ export function mergeSettings(
 	}
 	if (typeof base.deckCardBacklinkEnabled !== 'boolean') {
 		base.deckCardBacklinkEnabled = DEFAULT_SETTINGS.deckCardBacklinkEnabled;
+	}
+	if (typeof base.wikiLinkEnabled !== 'boolean') {
+		base.wikiLinkEnabled = DEFAULT_SETTINGS.wikiLinkEnabled;
 	}
 	// Legacy unreleased name: originText (detected) → auto.
 	const linkMode = base.backlinkLinkTextMode as string;
@@ -473,6 +482,20 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.headIncludeTitleInFront)
 					.onChange(async (value) => {
 						this.plugin.settings.headIncludeTitleInFront = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('解析 Wiki 链接')
+			.setDesc(
+				'关闭（默认）：`[[链接]]` 仅保留显示文本，不同步为可点击链接。开启：转为 oburi（obsidian://open）写入 Anki。不影响 `![[媒体]]` 嵌入。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.wikiLinkEnabled === true)
+					.onChange(async (value) => {
+						this.plugin.settings.wikiLinkEnabled = value;
 						await this.plugin.saveSettings();
 					}),
 			);

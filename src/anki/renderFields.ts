@@ -7,6 +7,10 @@ import {
 	type MediaAsset,
 	type MediaProcessOptions,
 } from './processMedia';
+import {
+	processWikiLinksInHtml,
+	stripWikiLinksInMarkdown,
+} from './wikiLinks';
 
 /** Obsidian / plugin chrome injected into rendered code blocks — not for Anki. */
 const OBSIDIAN_CODE_UI_SELECTOR = [
@@ -75,6 +79,14 @@ export async function renderMarkdownToHtml(
 	}
 }
 
+export interface RenderFieldOptions extends MediaProcessOptions {
+	/**
+	 * When true, wiki links become oburi (`obsidian://open`).
+	 * When false (default), wiki links are plain text (no link).
+	 */
+	wikiLinkEnabled?: boolean;
+}
+
 /**
  * Render a card field for Anki: rewrite local media to Anki filenames,
  * convert `$`/`$$` math to Anki MathJax delimiters, and collect assets.
@@ -83,16 +95,21 @@ export async function renderFieldWithMedia(
 	app: App,
 	markdown: string,
 	sourcePath: string,
-	mediaOptions?: MediaProcessOptions,
+	mediaOptions?: RenderFieldOptions,
 ): Promise<{ html: string; assets: MediaAsset[] }> {
 	const text = markdown.trim();
 	if (!text) {
 		return { html: '', assets: [] };
 	}
 
+	const wikiLinkEnabled = mediaOptions?.wikiLinkEnabled === true;
+	const sourceMarkdown = wikiLinkEnabled
+		? text
+		: stripWikiLinksInMarkdown(text);
+
 	const pre = await preprocessMarkdownMedia(
 		app,
-		text,
+		sourceMarkdown,
 		sourcePath,
 		mediaOptions,
 	);
@@ -109,6 +126,10 @@ export async function renderFieldWithMedia(
 	if (isVisuallyEmptyHtml(withMath) && text.trim()) {
 		withMath = `<p>${escapeHtmlText(text)}</p>`;
 	}
+	withMath = processWikiLinksInHtml(withMath, {
+		enabled: wikiLinkEnabled,
+		vaultName: app.vault.getName(),
+	});
 	const post = await processRenderedHtmlMedia(
 		app,
 		withMath,

@@ -148,9 +148,10 @@ export async function buildAnkiNoteFieldPayload(
 
 	const { headMarkdown, frontMarkdown } = splitCardHeadAndFront(card);
 	const baseMediaOpts = mediaOptions(settings, options?.mediaCache);
-	const mediaOpts: MediaProcessOptions = {
+	const mediaOpts: MediaProcessOptions & { wikiLinkEnabled?: boolean } = {
 		...(baseMediaOpts ?? {}),
 		assetMemo: new Map(),
+		wikiLinkEnabled: settings.wikiLinkEnabled === true,
 	};
 	const emptyField = (): Promise<{ html: string; assets: MediaAsset[] }> =>
 		Promise.resolve({ html: '', assets: [] });
