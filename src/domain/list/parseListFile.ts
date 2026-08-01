@@ -13,7 +13,7 @@ function basenameWithoutExt(filePath: string): string {
 
 /**
  * Parse the current note in list mode.
- * Top-level list items â†?card fronts; nested lists â†?backs.
+ * Top-level list items ï¿½?card fronts; nested lists ï¿½?backs.
  * Headings group decks; a sole H1 becomes the root deckName.
  */
 export function parseListFile(
