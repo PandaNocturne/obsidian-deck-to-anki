@@ -193,16 +193,7 @@ export class FileDeckSettingsModal extends Modal {
 				});
 
 			new Setting(contentEl)
-				.setName('Deck status')
-				.setDesc('YAML: deckStatus (true = archived, false = learning)')
-				.addToggle((toggle) =>
-					toggle.setValue(this.draft.deckStatus).onChange((value) => {
-						this.draft.deckStatus = value;
-					}),
-				);
-
-			new Setting(contentEl)
-				.setName('牌组编号')
+				.setName('Deck numbering')
 				.setDesc(
 					'YAML: deckNumbering — 同步树与 Anki ob-deck-tree 显示牌组序号；不写入卡片标题/正文',
 				)
@@ -212,6 +203,15 @@ export class FileDeckSettingsModal extends Modal {
 						.onChange((value) => {
 							this.draft.deckNumbering = value;
 						}),
+				);
+
+			new Setting(contentEl)
+				.setName('Deck status')
+				.setDesc('YAML: deckStatus (true = archived, false = learning)')
+				.addToggle((toggle) =>
+					toggle.setValue(this.draft.deckStatus).onChange((value) => {
+						this.draft.deckStatus = value;
+					}),
 				);
 		}
 
