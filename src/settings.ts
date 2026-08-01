@@ -75,9 +75,10 @@ export interface DeckToAnkiSettings {
 	/**
 	 * Card backlink anchor text:
 	 * - auto: detected (heading / ^block / 打开笔记)
+	 * - id: Anki note id (`ID 123456`)
 	 * - custom: fixed label from `backlinkLinkText` (default "backlink")
 	 */
-	backlinkLinkTextMode: 'auto' | 'custom';
+	backlinkLinkTextMode: 'auto' | 'id' | 'custom';
 	/** Used when backlinkLinkTextMode is custom. */
 	backlinkLinkText: string;
 	/** URI scheme for card backlink and tree links. */
@@ -254,6 +255,8 @@ export function mergeSettings(
 	const linkMode = base.backlinkLinkTextMode as string;
 	if (linkMode === 'custom') {
 		base.backlinkLinkTextMode = 'custom';
+	} else if (linkMode === 'id') {
+		base.backlinkLinkTextMode = 'id';
 	} else if (linkMode === 'auto' || linkMode === 'originText') {
 		base.backlinkLinkTextMode = 'auto';
 	} else {
@@ -1350,30 +1353,35 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const linkTextSetting = new Setting(section)
 			.setName('回链链接文本')
 			.setDesc(
-				'Auto：自动识别（标题 / ^块 ID / 打开笔记）；Custom：使用下方固定文案。',
+				'Auto：自动识别（标题 / ^块 ID / 打开笔记）；ID：显示 Anki 笔记 ID；Custom：使用下方固定文案。',
 			)
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption('auto', 'Auto')
+					.addOption('id', 'ID')
 					.addOption('custom', 'Custom')
 					.setValue(this.plugin.settings.backlinkLinkTextMode)
 					.onChange(async (value) => {
 						this.plugin.settings.backlinkLinkTextMode =
-							value === 'custom' ? 'custom' : 'auto';
+							value === 'custom'
+								? 'custom'
+								: value === 'id'
+									? 'id'
+									: 'auto';
 						await this.plugin.saveSettings();
 						syncCustomVisibility();
 					}),
 			);
 
 		const customTextSetting = new Setting(section)
-			.setName('Custom 链接文本')
+			.setName('Custom 自定义文本')
 			.setDesc('卡片回链锚点文字。默认为 backlink。')
 			.addText((text) =>
 				text
-					.setPlaceholder('backlink')
+					.setPlaceholder('🔗backlink')
 					.setValue(this.plugin.settings.backlinkLinkText)
 					.onChange(async (value) => {
-						const next = value.trim() || 'backlink';
+						const next = value.trim() || '🔗backlink';
 						this.plugin.settings.backlinkLinkText = next;
 						await this.plugin.saveSettings();
 					}),

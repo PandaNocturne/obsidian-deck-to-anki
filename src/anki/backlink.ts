@@ -242,12 +242,19 @@ export function cardBacklinkLabel(card: CardNode): string {
 /** Resolve card backlink anchor text from settings mode. */
 export function resolveCardBacklinkLinkText(
 	card: CardNode,
-	mode: 'auto' | 'custom',
+	mode: 'auto' | 'id' | 'custom',
 	customText: string,
 ): string {
 	if (mode === 'custom') {
 		const text = customText.trim();
 		return text || 'backlink';
+	}
+	if (mode === 'id') {
+		if (card.noteId !== undefined) {
+			return `ID ${card.noteId}`;
+		}
+		// Not synced yet — fall back to auto label.
+		return cardBacklinkLabel(card);
 	}
 	return cardBacklinkLabel(card);
 }
