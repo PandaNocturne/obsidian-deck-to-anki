@@ -1,7 +1,7 @@
 {
 	"id": "deck-to-anki",
 	"name": "Deck To Anki",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"minAppVersion": "1.0.0",
 	"description": "Sync decks notes to Anki.",
 	"author": "PandaNocturne",
