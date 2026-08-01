@@ -89,6 +89,19 @@ export async function ensureModelFields(
 		}
 	}
 
+	// Card mode leaves head empty; AnkiConnect requires fields[0] non-empty.
+	existing = await client.modelFieldNames(templateId);
+	if (existing[0] !== FIELD_FRONT && existing.includes(FIELD_FRONT)) {
+		try {
+			await client.modelFieldReposition(templateId, FIELD_FRONT, 0);
+		} catch (error) {
+			const msg = error instanceof Error ? error.message : String(error);
+			warnings.push(
+				`调整字段顺序 ${FIELD_FRONT}→首位失败：${msg}`,
+			);
+		}
+	}
+
 	return warnings;
 }
 

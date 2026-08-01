@@ -78,9 +78,9 @@ function resolveDeckTemplate(
  * Split parse title vs front body for Anki.
  * Head = navTitle; front is body under the heading (never includes the title line).
  *
- * Title-only cards (no body): content stays in **head**.
- * AnkiConnect rejects addNote when the model's first field (`ob-deck-head`) is
- * blank — so title-only must not leave head empty.
+ * Card mode (no navTitle): all content → `ob-deck-front`, head stays empty.
+ * Title-only head cards: content → `ob-deck-front` (model first field / AnkiConnect).
+ * Head + body: title → head, body → front.
  */
 export function splitCardHeadAndFront(card: CardNode): {
 	headMarkdown: string;
@@ -88,12 +88,14 @@ export function splitCardHeadAndFront(card: CardNode): {
 } {
 	const head = (card.navTitle ?? '').trim();
 	let front = card.front.trim();
-	if (!head) {
-		return { headMarkdown: '', frontMarkdown: front };
+
+	// Card / list without a heading title: front only.
+	if (!head || card.deckClass === 'card') {
+		return { headMarkdown: '', frontMarkdown: front || head };
 	}
 
 	if (front === head) {
-		return { headMarkdown: head, frontMarkdown: '' };
+		return { headMarkdown: '', frontMarkdown: head };
 	}
 
 	const lines = front.split(/\r?\n/);
@@ -102,7 +104,7 @@ export function splitCardHeadAndFront(card: CardNode): {
 	}
 
 	if (!front.trim()) {
-		return { headMarkdown: head, frontMarkdown: '' };
+		return { headMarkdown: '', frontMarkdown: head };
 	}
 
 	return { headMarkdown: head, frontMarkdown: front };

@@ -117,13 +117,10 @@ function fieldNamesInTemplateHtml(html: string): string[] {
 /**
  * Make sure addNote won't hit "cannot create note because it is empty".
  *
- * AnkiConnect checks the model's **first field** (`note.fields[0]`): if it is
- * blank, addNote fails even when other fields have content. Our first field is
- * usually `ob-deck-head`.
+ * AnkiConnect checks the model's **first field** (`note.fields[0]`). We keep
+ * `ob-deck-front` first so card-mode notes can leave `ob-deck-head` empty.
  *
- * Also:
- * - Mirror into legacy Front/Back when those fields still exist
- * - Fill Front-template fields that would otherwise render blank
+ * Also mirrors into legacy Front/Back and fills blank Front-template fields.
  */
 function ensureFieldsNonEmptyForAnki(
 	fields: Record<string, string>,
@@ -131,9 +128,15 @@ function ensureFieldsNonEmptyForAnki(
 	frontTemplateHtml: string,
 	plainFallback: string,
 	firstFieldName?: string,
+	options?: { keepHeadEmpty?: boolean },
 ): void {
+	const keepHeadEmpty = options?.keepHeadEmpty === true;
+	if (keepHeadEmpty) {
+		fields[FIELD_HEAD] = '';
+	}
+
 	const front = fields[FIELD_FRONT] ?? '';
-	const head = fields[FIELD_HEAD] ?? '';
+	const head = keepHeadEmpty ? '' : (fields[FIELD_HEAD] ?? '');
 	const back = fields[FIELD_BACK] ?? '';
 	const best =
 		(fieldHasContent(front) && front) ||
@@ -147,47 +150,38 @@ function ensureFieldsNonEmptyForAnki(
 		return;
 	}
 
-	// Critical for AnkiConnect: first field must be non-empty.
+	// Card / primary content always lands in ob-deck-front when missing.
+	if (!fieldHasContent(fields[FIELD_FRONT])) {
+		fields[FIELD_FRONT] = best;
+	}
+
+	// AnkiConnect: first field must be non-empty. Prefer front; never refill
+	// head when card mode requires it empty.
 	if (
 		firstFieldName &&
 		allowed.has(firstFieldName) &&
 		!fieldHasContent(fields[firstFieldName])
 	) {
-		fields[firstFieldName] = best;
-	}
-
-	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
-	const usesHead = referenced.includes(FIELD_HEAD);
-	const usesFront =
-		referenced.includes(FIELD_FRONT) || referenced.includes('Front');
-
-	// Avoid rendering the same HTML twice when we mirrored front → head.
-	// Default template references both; assume that when template info is missing.
-	if (
-		fieldHasContent(fields[FIELD_HEAD]) &&
-		fields[FIELD_HEAD] === fields[FIELD_FRONT] &&
-		((usesHead && usesFront) || referenced.length === 0)
-	) {
-		fields[FIELD_FRONT] = '';
-	}
-
-	// Templates that only reference front (or legacy Front) still need content.
-	if (!fieldHasContent(fields[FIELD_FRONT]) && best) {
-		const frontOnly = usesFront && !usesHead;
-		if (frontOnly || !fieldHasContent(fields[FIELD_HEAD])) {
-			fields[FIELD_FRONT] = best;
+		if (firstFieldName === FIELD_HEAD && keepHeadEmpty) {
+			// Front should already hold content; leave head blank.
+		} else {
+			fields[firstFieldName] = best;
 		}
+	}
+
+	if (keepHeadEmpty) {
+		fields[FIELD_HEAD] = '';
 	}
 
 	// Legacy Basic-style fields (still present when rename failed / mixed models).
 	if (allowed.has('Front') && !fieldHasContent(fields.Front)) {
-		fields.Front =
-			fields[FIELD_FRONT] || fields[FIELD_HEAD] || best;
+		fields.Front = fields[FIELD_FRONT] || best;
 	}
 	if (allowed.has('Back') && !fieldHasContent(fields.Back)) {
 		fields.Back = fields[FIELD_BACK] || '';
 	}
 
+	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
 	if (referenced.length === 0) {
 		return;
 	}
@@ -197,11 +191,15 @@ function ensureFieldsNonEmptyForAnki(
 	if (anyReferencedFilled) {
 		return;
 	}
-	// Live Anki Front template still points at empty fields (e.g. only {{Front}}
-	// while we filled ob-deck-front). Populate the first referenced field.
 	const target =
 		referenced.find((name) => allowed.has(name) || name in fields) ??
 		referenced[0]!;
+	if (target === FIELD_HEAD && keepHeadEmpty) {
+		if (allowed.has(FIELD_FRONT)) {
+			fields[FIELD_FRONT] = best;
+		}
+		return;
+	}
 	fields[target] = best;
 }
 
@@ -240,6 +238,8 @@ async function upsertAnkiNote(
 		deckTagsEnabled: boolean;
 		/** Raw card front text when HTML render is empty. */
 		plainFallback?: string;
+		/** Card mode: keep ob-deck-head empty; content stays in ob-deck-front. */
+		keepHeadEmpty?: boolean;
 	},
 ): Promise<{ noteId: number; created: boolean }> {
 	const { deckName, modelName, tags, deckTagsEnabled } = input;
@@ -275,6 +275,7 @@ async function upsertAnkiNote(
 		liveFrontTemplates,
 		input.plainFallback ?? '',
 		firstFieldName,
+		{ keepHeadEmpty: input.keepHeadEmpty === true },
 	);
 
 	if (
@@ -379,7 +380,7 @@ async function upsertAnkiNote(
 			}
 			const looksEmpty = /empty|为空/i.test(msg);
 			const hint = looksEmpty
-				? '（AnkiConnect 要求笔记首字段非空；或模板仍用旧 Front/Back。已尝试兼容写入；请到插件设置对该模板点「强制更新」后重试）'
+				? '（AnkiConnect 要求首字段 ob-deck-front 非空；或模板仍用旧 Front/Back。请到插件设置对该模板点「强制更新」后重试）'
 				: '';
 			throw new Error(`Anki addNote 失败：${msg}${hint}`);
 		}
@@ -523,6 +524,10 @@ export async function syncCardToAnki(
 		/* non-fatal; ensureFieldsNonEmptyForAnki still dual-writes Front/Back */
 	}
 
+	if (card.deckClass === 'card') {
+		payload.fields[FIELD_HEAD] = '';
+	}
+
 	const upserted = await upsertAnkiNote(client, {
 		noteId: card.noteId,
 		deckName,
@@ -531,6 +536,7 @@ export async function syncCardToAnki(
 		tags: payload.tags,
 		deckTagsEnabled: settings.deckTagsEnabled,
 		plainFallback,
+		keepHeadEmpty: card.deckClass === 'card',
 	});
 
 	// Card mode → always persist YAML `deckID` (and migrate legacy `<!--ID-->`).

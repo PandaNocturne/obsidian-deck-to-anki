@@ -78,6 +78,19 @@ export class AnkiConnectClient {
 		});
 	}
 
+	/** Move a field within a model (0 = first). */
+	async modelFieldReposition(
+		modelName: string,
+		fieldName: string,
+		index: number,
+	): Promise<void> {
+		await this.invoke('modelFieldReposition', {
+			modelName,
+			fieldName,
+			index,
+		});
+	}
+
 	async createDeck(deck: string): Promise<void> {
 		await this.invoke('createDeck', { deck });
 	}

@@ -107,12 +107,15 @@ export function sanitizeDeckTemplateId(raw: string): string {
 
 /**
  * Field names on ob-deck-* models.
- * Parse fields: head / front / back / tags
+ * Parse fields: front / head / back / tags
  * Custom fields: backlink (card jump) / tree (deck crumbs)
+ *
+ * `ob-deck-front` is first: AnkiConnect rejects addNote when fields[0] is blank,
+ * and card-mode notes keep `ob-deck-head` empty.
  */
 export const MODEL_FIELDS = [
-	'ob-deck-head',
 	'ob-deck-front',
+	'ob-deck-head',
 	'ob-deck-back',
 	'ob-deck-tags',
 	'ob-deck-backlink',
