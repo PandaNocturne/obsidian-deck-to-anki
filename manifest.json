@@ -1,10 +1,10 @@
-{
+﻿{
 	"id": "deck-to-anki",
 	"name": "Deck To Anki",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"minAppVersion": "1.0.0",
-	"description": "Sync Obsidian notes to Anki decks.",
+	"description": "Sync decks notes to Anki.",
 	"author": "PandaNocturne",
-	"authorUrl": "",
+	"authorUrl": "https://github.com/PandaNocturne",
 	"isDesktopOnly": false
 }
