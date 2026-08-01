@@ -103,13 +103,11 @@ export class CardPreviewModal extends Modal {
 		const host = this.bodyHostEl;
 		host.empty();
 
-		const head = (this.card.navTitle ?? '').trim();
-		if (head) {
-			await this.renderSection(host, '标题', head, token);
-			if (token !== this.renderToken) return;
-		}
-
-		await this.renderSection(host, '正面', this.card.front, token);
+		const frontCombined = mergeTitleAndFront(
+			this.card.navTitle,
+			this.card.front,
+		);
+		await this.renderSection(host, '正面', frontCombined, token);
 		if (token !== this.renderToken) return;
 
 		await this.renderSection(host, '反面', this.card.back, token);
@@ -176,6 +174,23 @@ export class CardPreviewModal extends Modal {
 		);
 		if (token !== this.renderToken) return;
 	}
+}
+
+/** Merge nav title + front body into one preview block (shown as 正面). */
+function mergeTitleAndFront(
+	navTitle: string | undefined,
+	front: string | undefined,
+): string {
+	const head = (navTitle ?? '').trim();
+	const body = (front ?? '').trim();
+	if (head && body) {
+		// Avoid duplicating when parse already put the title into front.
+		if (body === head || body.startsWith(`${head}\n`)) {
+			return body;
+		}
+		return `${head}\n\n${body}`;
+	}
+	return head || body;
 }
 
 export function openCardPreview(
