@@ -49,6 +49,23 @@ export interface SyncPanelUIOptions {
 	onRequestClose?: () => void;
 }
 
+/** Per-tab scan result kept while the panel stays open. */
+interface TabViewCache {
+	viewRoot: DeckNode;
+	parsed: ParsedHeadFile | null;
+	forestItems: ParsedHeadFile[];
+	forestWarnings: string[];
+	focusChildLabel: string | null;
+	ankiStatusChecked: boolean;
+	selectedIds: string[];
+	collapsedIds: string[];
+	parseType: DeckType;
+	cardLevel: number;
+	/** Current-tab source note; invalidate cache when the active file changes. */
+	currentFilePath: string | null;
+	statusText: string;
+}
+
 interface SessionDeckSettings {
 	deckType: DeckType;
 	deckName: string;
@@ -155,6 +172,8 @@ export class SyncPanelUI {
 	private focusChildLabel: string | null = null;
 	/** True after a successful toolbar 检查; statuses survive reload until closed. */
 	private ankiStatusChecked = false;
+	/** Cached scan trees per tab (cleared on panel close). */
+	private readonly tabCaches = new Map<SyncPanelTab, TabViewCache>();
 	/** Bumps to cancel in-flight background auto-check. */
 	private bgCheckId = 0;
 	/** Blocks overlapping check / sync / reload; drives button loading UI. */
@@ -234,9 +253,69 @@ export class SyncPanelUI {
 		this.forestItems = [];
 		this.focusChildLabel = null;
 		this.ankiStatusChecked = false;
+		this.tabCaches.clear();
 		this.bgCheckId += 1;
 		this.busy = null;
 		this.busyNodeId = null;
+	}
+
+	/** Persist the active tab’s tree / selection / check state. */
+	private saveCurrentTabCache(): void {
+		if (!this.viewRoot || !this.statusEl) {
+			return;
+		}
+		const tab = this.state.tab;
+		const file =
+			tab === 'current' ? this.getActiveMarkdownFile() : null;
+		this.tabCaches.set(tab, {
+			viewRoot: this.viewRoot,
+			parsed: this.parsed,
+			forestItems: this.forestItems,
+			forestWarnings: [...this.forestWarnings],
+			focusChildLabel: this.focusChildLabel,
+			ankiStatusChecked: this.ankiStatusChecked,
+			selectedIds: this.state.snapshotSelectionIds(),
+			collapsedIds: this.state.snapshotCollapsedIds(),
+			parseType: this.state.parseType,
+			cardLevel: this.state.cardLevel,
+			currentFilePath: file?.path ?? null,
+			statusText: this.statusEl.getText(),
+		});
+	}
+
+	/**
+	 * Restore a tab cache without re-scanning.
+	 * Returns false when missing or (current tab) source file changed.
+	 */
+	private restoreTabCache(tab: SyncPanelTab): boolean {
+		const cache = this.tabCaches.get(tab);
+		if (!cache) {
+			return false;
+		}
+		if (tab === 'current') {
+			const file = this.getActiveMarkdownFile();
+			if (!file || cache.currentFilePath !== file.path) {
+				this.tabCaches.delete(tab);
+				return false;
+			}
+		}
+
+		this.state.tab = tab;
+		this.viewRoot = cache.viewRoot;
+		this.parsed = cache.parsed;
+		this.forestItems = cache.forestItems;
+		this.forestWarnings = cache.forestWarnings;
+		this.focusChildLabel = cache.focusChildLabel;
+		this.ankiStatusChecked = cache.ankiStatusChecked;
+		this.state.parseType = cache.parseType;
+		this.state.cardLevel = cache.cardLevel;
+		this.state.restoreUiSnapshot(
+			cache.viewRoot,
+			cache.selectedIds,
+			cache.collapsedIds,
+		);
+		this.statusEl.setText(cache.statusText);
+		return true;
 	}
 
 	private renderChrome(): void {
@@ -626,7 +705,10 @@ export class SyncPanelUI {
 			return;
 		}
 		try {
+			// Manual scan always re-parses the active tab and refreshes its cache.
+			this.tabCaches.delete(this.state.tab);
 			await this.reload({ preserveTab: true });
+			this.saveCurrentTabCache();
 		} finally {
 			this.clearBusy();
 		}
@@ -641,18 +723,30 @@ export class SyncPanelUI {
 		}
 		if (tab === 'current' && !this.getActiveMarkdownFile()) {
 			new Notice('未打开笔记，已切换到「所有卡片」');
-			this.state.tab = 'all';
-		} else {
-			this.state.tab = tab;
+			tab = 'all';
 		}
-		// Status check is per view; switching tabs starts without prior colors.
-		this.ankiStatusChecked = false;
+
+		if (tab === this.state.tab) {
+			return;
+		}
+
+		this.saveCurrentTabCache();
 		this.bgCheckId += 1;
+
+		if (this.restoreTabCache(tab)) {
+			this.renderBody();
+			this.applyBusyChrome();
+			return;
+		}
+
+		this.state.tab = tab;
+		this.ankiStatusChecked = false;
 		if (!this.setBusy('reload')) {
 			return;
 		}
 		try {
 			await this.reload({ preserveTab: true });
+			this.saveCurrentTabCache();
 		} finally {
 			this.clearBusy();
 		}
@@ -751,6 +845,7 @@ export class SyncPanelUI {
 		}
 
 		this.renderBody();
+		this.saveCurrentTabCache();
 
 		const skipAutoCheck =
 			this.state.tab !== 'current' ||
@@ -843,6 +938,7 @@ export class SyncPanelUI {
 					`后台检测完成（${cards.length} 张${hint}）`,
 				);
 			}
+			this.saveCurrentTabCache();
 		} catch (error) {
 			if (id !== this.bgCheckId) {
 				return;
@@ -1608,6 +1704,7 @@ export class SyncPanelUI {
 
 			if (result.warning) {
 				this.statusEl.setText(result.warning);
+				this.saveCurrentTabCache();
 				progress.finish(result.warning, 6000);
 				return;
 			}
@@ -1619,6 +1716,7 @@ export class SyncPanelUI {
 			const summary = `状态检测完成（${cards.length} 张${hint}）`;
 			this.statusEl.setText(summary);
 			this.setPanelProgress(1, 1, summary);
+			this.saveCurrentTabCache();
 			progress.finish(summary);
 		} catch (error) {
 			const msg = error instanceof Error ? error.message : String(error);

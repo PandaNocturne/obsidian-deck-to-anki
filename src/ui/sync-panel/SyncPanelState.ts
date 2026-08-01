@@ -336,4 +336,30 @@ export class SyncPanelState {
 		};
 		walk(root);
 	}
+
+	/** Snapshot checkbox / collapse ids for tab cache (same tree instance). */
+	snapshotSelectionIds(): string[] {
+		return [...this.selected];
+	}
+
+	snapshotCollapsedIds(): string[] {
+		return [...this.collapsed];
+	}
+
+	/** Restore a previously cached tree without re-selecting defaults. */
+	restoreUiSnapshot(
+		root: DeckNode,
+		selectedIds: Iterable<string>,
+		collapsedIds: Iterable<string>,
+	): void {
+		this.root = root;
+		this.selected.clear();
+		for (const id of selectedIds) {
+			this.selected.add(id);
+		}
+		this.collapsed.clear();
+		for (const id of collapsedIds) {
+			this.collapsed.add(id);
+		}
+	}
 }
