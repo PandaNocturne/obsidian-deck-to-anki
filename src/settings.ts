@@ -28,6 +28,7 @@ import {
 import type { BacklinkScheme } from './anki/backlink';
 import type { DeckType } from './domain/head/types';
 import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
+import { renderScanScopeSettings } from './ui/settings/renderScanScopeSettings';
 
 /** Fallback when settings / YAML have no deckLevel. */
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
@@ -127,8 +128,18 @@ export interface DeckToAnkiSettings {
 	mediaCompressEnabled: boolean;
 	/** JPEG quality 1–100 for Anki upload. Default 75. */
 	mediaCompressQuality: number;
+	/**
+	 * Only scan notes under these folders (and subfolders).
+	 * Empty = entire vault (`./`).
+	 */
 	includeFolders: string[];
-	requireDeckTag: boolean;
+	/** Exclude notes under these folders (and subfolders). */
+	ignoreFolders: string[];
+	/**
+	 * Only scan notes that have at least one of these tags (nested match).
+	 * Empty = no tag filter.
+	 */
+	includeTags: string[];
 }
 
 export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
@@ -161,7 +172,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	mediaCompressEnabled: true,
 	mediaCompressQuality: 75,
 	includeFolders: [],
-	requireDeckTag: true,
+	ignoreFolders: [],
+	includeTags: [],
 };
 
 /** Merge persisted settings with defaults (especially nested template styles). */
@@ -272,6 +284,17 @@ export function mergeSettings(
 	if (typeof base.autoCheckOnSelect !== 'boolean') {
 		base.autoCheckOnSelect = DEFAULT_SETTINGS.autoCheckOnSelect;
 	}
+	if (!Array.isArray(base.includeFolders)) {
+		base.includeFolders = [...DEFAULT_SETTINGS.includeFolders];
+	}
+	if (!Array.isArray(base.ignoreFolders)) {
+		base.ignoreFolders = [...DEFAULT_SETTINGS.ignoreFolders];
+	}
+	if (!Array.isArray(base.includeTags)) {
+		base.includeTags = [...DEFAULT_SETTINGS.includeTags];
+	}
+	// Drop unused legacy flag if present in old data.json.
+	delete (base as { requireDeckTag?: unknown }).requireDeckTag;
 	// Legacy unreleased name: originText (detected) → auto.
 	const linkMode = base.backlinkLinkTextMode as string;
 	if (linkMode === 'custom') {
@@ -526,6 +549,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 					}),
 			);
+
+		renderScanScopeSettings(this.plugin, containerEl, (el, title, desc) =>
+			this.beginSection(el, title, desc),
+		);
 
 		const yamlSection = this.beginSection(
 			containerEl,

@@ -1106,6 +1106,8 @@ export class SyncPanelUI {
 		const result = await parseVaultDeckForest(this.app, {
 			mode,
 			includeFolders: this.plugin.settings.includeFolders ?? [],
+			ignoreFolders: this.plugin.settings.ignoreFolders ?? [],
+			includeTags: this.plugin.settings.includeTags ?? [],
 			fallbackDeckLevel: this.defaultCardHeadingLevel(),
 			childCardHeadingLevel: this.defaultCardHeadingLevel(),
 			includeHeadingInFront:

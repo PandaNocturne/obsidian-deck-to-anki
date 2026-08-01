@@ -96,6 +96,101 @@ if you want to view the source, please visit the github repository of this plugi
   font-size: 0.85em;
   line-height: 1.4;
 }
+.deck-to-anki-settings .dta-scope-setting {
+  flex-direction: column;
+  align-items: stretch;
+}
+.deck-to-anki-settings .dta-scope-setting .setting-item-info {
+  margin-bottom: 0.35rem;
+}
+.deck-to-anki-settings .dta-scope-setting .setting-item-control {
+  width: 100%;
+  justify-content: stretch;
+}
+.deck-to-anki-settings .dta-scope-control {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  width: 100%;
+}
+.deck-to-anki-settings .dta-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 1.4rem;
+}
+.deck-to-anki-settings .dta-scope-empty {
+  color: var(--text-faint);
+  font-size: 0.85em;
+}
+.deck-to-anki-settings .dta-scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 100%;
+  padding: 0.15rem 0.2rem 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 0.82em;
+  line-height: 1.3;
+}
+.deck-to-anki-settings .dta-scope-chip-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-to-anki-settings .dta-scope-chip-remove {
+  flex: 0 0 auto;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.deck-to-anki-settings .dta-scope-chip-remove:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+.deck-to-anki-settings .dta-scope-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+}
+.deck-to-anki-settings .dta-scope-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.92em;
+}
+.deck-to-anki-settings .dta-scope-btn {
+  flex: 0 0 auto;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.deck-to-anki-settings .dta-scope-btn:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
 .deck-to-anki-settings .dta-template-create-row {
   display: flex;
   align-items: center;

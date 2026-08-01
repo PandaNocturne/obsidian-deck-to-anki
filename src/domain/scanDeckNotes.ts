@@ -4,6 +4,12 @@ import { recountCards } from './head/buildHeadTree';
 import { parseFrontmatter } from './head/frontmatter';
 import type { CardNode, DeckNode, ParsedHeadFile } from './head/types';
 import { parseNoteFile } from './parseNote';
+import {
+	collectFileTags,
+	isUnderFolders,
+	isUnderIgnoredFolders,
+	noteMatchesIncludeTags,
+} from './scanFilters';
 
 export type VaultDeckScanMode = 'active' | 'archived';
 
@@ -11,23 +17,34 @@ export interface ScanDeckNotesOptions {
 	mode: VaultDeckScanMode;
 	/** When non-empty, only scan notes under these folder prefixes. */
 	includeFolders: string[];
+	/** Exclude notes under these folder prefixes. */
+	ignoreFolders?: string[];
+	/** When non-empty, only notes with matching tags (nested). */
+	includeTags?: string[];
 	fallbackDeckLevel: number;
 	childCardHeadingLevel: number;
 	includeHeadingInFront?: boolean;
 }
 
-function isUnderFolders(filePath: string, folders: string[]): boolean {
-	if (folders.length === 0) {
-		return true;
+function passesScanScope(
+	app: App,
+	file: TFile,
+	includeFolders: string[],
+	ignoreFolders: string[],
+	includeTags: string[],
+): boolean {
+	if (!isUnderFolders(file.path, includeFolders)) {
+		return false;
 	}
-	const normalized = filePath.replace(/\\/g, '/');
-	return folders.some((folder) => {
-		const prefix = folder.replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-		if (!prefix) {
-			return true;
-		}
-		return normalized === prefix || normalized.startsWith(`${prefix}/`);
-	});
+	if (isUnderIgnoredFolders(file.path, ignoreFolders)) {
+		return false;
+	}
+	if (
+		!noteMatchesIncludeTags(collectFileTags(app, file), includeTags)
+	) {
+		return false;
+	}
+	return true;
 }
 
 /**
@@ -37,12 +54,22 @@ function isUnderFolders(filePath: string, folders: string[]): boolean {
 async function collectFileModeNestedPaths(
 	app: App,
 	includeFolders: string[],
+	ignoreFolders: string[],
+	includeTags: string[],
 ): Promise<Set<string>> {
 	const nested = new Set<string>();
 	const files = app.vault.getMarkdownFiles();
 
 	for (const file of files) {
-		if (!isUnderFolders(file.path, includeFolders)) {
+		if (
+			!passesScanScope(
+				app,
+				file,
+				includeFolders,
+				ignoreFolders,
+				includeTags,
+			)
+		) {
 			continue;
 		}
 		const content = await app.vault.cachedRead(file);
@@ -77,14 +104,29 @@ export async function findDeckTypedNotes(
 	app: App,
 	mode: VaultDeckScanMode,
 	includeFolders: string[],
+	ignoreFolders: string[] = [],
+	includeTags: string[] = [],
 ): Promise<TFile[]> {
 	const wantArchived = mode === 'archived';
-	const nestedPaths = await collectFileModeNestedPaths(app, includeFolders);
+	const nestedPaths = await collectFileModeNestedPaths(
+		app,
+		includeFolders,
+		ignoreFolders,
+		includeTags,
+	);
 	const files = app.vault.getMarkdownFiles();
 	const matched: TFile[] = [];
 
 	for (const file of files) {
-		if (!isUnderFolders(file.path, includeFolders)) {
+		if (
+			!passesScanScope(
+				app,
+				file,
+				includeFolders,
+				ignoreFolders,
+				includeTags,
+			)
+		) {
 			continue;
 		}
 		if (nestedPaths.has(file.path)) {
@@ -116,10 +158,14 @@ export async function parseVaultDeckForest(
 	app: App,
 	options: ScanDeckNotesOptions,
 ): Promise<{ root: DeckNode; items: ParsedHeadFile[]; warnings: string[] }> {
+	const ignoreFolders = options.ignoreFolders ?? [];
+	const includeTags = options.includeTags ?? [];
 	const files = await findDeckTypedNotes(
 		app,
 		options.mode,
 		options.includeFolders,
+		ignoreFolders,
+		includeTags,
 	);
 	const items: ParsedHeadFile[] = [];
 	const warnings: string[] = [];
