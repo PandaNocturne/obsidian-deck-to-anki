@@ -4,39 +4,39 @@ export type DeckTemplateId = string;
 export type BuiltInDeckTemplateId = 'ob-deck-basic' | 'ob-deck-basic++';
 
 export const BUILT_IN_DECK_TEMPLATE_IDS: BuiltInDeckTemplateId[] = [
-	'ob-deck-basic',
-	'ob-deck-basic++',
+  'ob-deck-basic',
+  'ob-deck-basic++',
 ];
 
 /** @deprecated Prefer BUILT_IN_DECK_TEMPLATE_IDS + custom list from settings. */
 export const DECK_TEMPLATE_IDS: BuiltInDeckTemplateId[] =
-	BUILT_IN_DECK_TEMPLATE_IDS;
+  BUILT_IN_DECK_TEMPLATE_IDS;
 
 export const BUILT_IN_DECK_TEMPLATE_LABELS: Record<
-	BuiltInDeckTemplateId,
-	string
+  BuiltInDeckTemplateId,
+  string
 > = {
-	'ob-deck-basic': 'ob-deck-basic',
-	'ob-deck-basic++': 'ob-deck-basic++',
+  'ob-deck-basic': 'ob-deck-basic',
+  'ob-deck-basic++': 'ob-deck-basic++',
 };
 
 /** @deprecated Prefer deckTemplateLabel(). */
 export const DECK_TEMPLATE_LABELS: Record<BuiltInDeckTemplateId, string> =
-	BUILT_IN_DECK_TEMPLATE_LABELS;
+  BUILT_IN_DECK_TEMPLATE_LABELS;
 
 export function isBuiltInDeckTemplate(
-	id: string,
+  id: string,
 ): id is BuiltInDeckTemplateId {
-	return (BUILT_IN_DECK_TEMPLATE_IDS as string[]).includes(id);
+  return (BUILT_IN_DECK_TEMPLATE_IDS as string[]).includes(id);
 }
 
 export function allDeckTemplateIds(
-	customIds: string[] | undefined | null,
+  customIds: string[] | undefined | null,
 ): DeckTemplateId[] {
-	const custom = (customIds ?? [])
-		.map((id) => id.trim())
-		.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id));
-	return [...BUILT_IN_DECK_TEMPLATE_IDS, ...custom];
+  const custom = (customIds ?? [])
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id));
+  return [...BUILT_IN_DECK_TEMPLATE_IDS, ...custom];
 }
 
 /**
@@ -44,65 +44,65 @@ export function allDeckTemplateIds(
  * Keeps user order, then appends any missing builtins, then missing customs.
  */
 export function normalizeDeckTemplateOrder(
-	order: string[] | undefined | null,
-	customIds: string[] | undefined | null,
+  order: string[] | undefined | null,
+  customIds: string[] | undefined | null,
 ): DeckTemplateId[] {
-	const custom = [
-		...new Set(
-			(customIds ?? [])
-				.map((id) => sanitizeDeckTemplateId(String(id)))
-				.filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id)),
-		),
-	];
-	const allowed = new Set<string>([
-		...BUILT_IN_DECK_TEMPLATE_IDS,
-		...custom,
-	]);
-	const seen = new Set<string>();
-	const out: DeckTemplateId[] = [];
-	for (const raw of order ?? []) {
-		const id = sanitizeDeckTemplateId(String(raw));
-		if (!id || seen.has(id) || !allowed.has(id)) {
-			continue;
-		}
-		seen.add(id);
-		out.push(id);
-	}
-	for (const id of BUILT_IN_DECK_TEMPLATE_IDS) {
-		if (!seen.has(id)) {
-			seen.add(id);
-			out.push(id);
-		}
-	}
-	for (const id of custom) {
-		if (!seen.has(id)) {
-			seen.add(id);
-			out.push(id);
-		}
-	}
-	return out;
+  const custom = [
+    ...new Set(
+      (customIds ?? [])
+        .map((id) => sanitizeDeckTemplateId(String(id)))
+        .filter((id) => id.length > 0 && !isBuiltInDeckTemplate(id)),
+    ),
+  ];
+  const allowed = new Set<string>([
+    ...BUILT_IN_DECK_TEMPLATE_IDS,
+    ...custom,
+  ]);
+  const seen = new Set<string>();
+  const out: DeckTemplateId[] = [];
+  for (const raw of order ?? []) {
+    const id = sanitizeDeckTemplateId(String(raw));
+    if (!id || seen.has(id) || !allowed.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    out.push(id);
+  }
+  for (const id of BUILT_IN_DECK_TEMPLATE_IDS) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  for (const id of custom) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 export function allDeckTemplateIdsOrdered(settings: {
-	deckTemplateOrder?: string[] | null;
-	customDeckTemplates?: string[] | null;
+  deckTemplateOrder?: string[] | null;
+  customDeckTemplates?: string[] | null;
 }): DeckTemplateId[] {
-	return normalizeDeckTemplateOrder(
-		settings.deckTemplateOrder,
-		settings.customDeckTemplates,
-	);
+  return normalizeDeckTemplateOrder(
+    settings.deckTemplateOrder,
+    settings.customDeckTemplates,
+  );
 }
 
 export function deckTemplateLabel(id: string): string {
-	if (isBuiltInDeckTemplate(id)) {
-		return BUILT_IN_DECK_TEMPLATE_LABELS[id];
-	}
-	return id;
+  if (isBuiltInDeckTemplate(id)) {
+    return BUILT_IN_DECK_TEMPLATE_LABELS[id];
+  }
+  return id;
 }
 
 /** Sanitize user input into an Anki model name. */
 export function sanitizeDeckTemplateId(raw: string): string {
-	return raw.trim().replace(/\s+/g, ' ');
+  return raw.trim().replace(/\s+/g, ' ');
 }
 
 /**
@@ -112,13 +112,13 @@ export function sanitizeDeckTemplateId(raw: string): string {
  * It is not shown on card Front/Back HTML templates.
  */
 export const MODEL_FIELDS = [
-	'ob-deck-id',
-	'ob-deck-head',
-	'ob-deck-front',
-	'ob-deck-back',
-	'ob-deck-tags',
-	'ob-deck-tree',
-	'ob-deck-backlink',
+  'ob-deck-id',
+  'ob-deck-head',
+  'ob-deck-front',
+  'ob-deck-back',
+  'ob-deck-tags',
+  'ob-deck-tree',
+  'ob-deck-backlink',
 ] as const;
 
 export type ModelFieldName = (typeof MODEL_FIELDS)[number];
@@ -136,75 +136,85 @@ export const FIELD_BACKLINK: ModelFieldName = 'ob-deck-backlink';
 
 /** Value written to `ob-deck-id` before Anki assigns a note id. */
 export function provisionalDeckIdField(card: {
-	noteId?: number;
-	sourceFilePath?: string;
-	lineStart: number;
+  noteId?: number;
+  sourceFilePath?: string;
+  lineStart: number;
 }): string {
-	if (card.noteId !== undefined && card.noteId > 0) {
-		return String(card.noteId);
-	}
-	const path = card.sourceFilePath?.trim() || 'unknown';
-	return `dta:${path}:${card.lineStart}`;
+  if (card.noteId !== undefined && card.noteId > 0) {
+    return String(card.noteId);
+  }
+  const path = card.sourceFilePath?.trim() || 'unknown';
+  return `dta:${path}:${card.lineStart}`;
 }
 
 export interface DeckTemplateStyle {
-	/** Anki card Front side HTML. */
-	front: string;
-	/** Anki card Back side HTML. */
-	back: string;
-	/** Model CSS. */
-	css: string;
-	/** Create reversible Card 2 (like ob-deck-basic++). */
-	reversible?: boolean;
-	/**
-	 * Card interaction kind.
-	 * Currently only `qa` is implemented; others are reserved.
-	 */
-	kind?: DeckCardKind;
+  /** Anki Card 1 Front HTML. */
+  front: string;
+  /** Anki Card 1 Back HTML. */
+  back: string;
+  /**
+   * Anki Card 2 (reverse) Front HTML.
+   * Use fields explicitly (e.g. `{{ob-deck-back}}` as the prompt).
+   */
+  reverseFront?: string;
+  /**
+   * Anki Card 2 (reverse) Back HTML.
+   * Use fields explicitly (e.g. head/front as the answer).
+   */
+  reverseBack?: string;
+  /** Model CSS. */
+  css: string;
+  /** Create reversible Card 2 (like ob-deck-basic++). */
+  reversible?: boolean;
+  /**
+   * Card interaction kind.
+   * Currently only `qa` is implemented; others are reserved.
+   */
+  kind?: DeckCardKind;
 }
 
 /** Template card kinds shown in settings. */
 export type DeckCardKind = 'qa' | 'truefalse' | 'choice' | 'cloze';
 
 export const DECK_CARD_KIND_IDS: DeckCardKind[] = [
-	'qa',
-	'truefalse',
-	'choice',
-	'cloze',
+  'qa',
+  'truefalse',
+  'choice',
+  'cloze',
 ];
 
 export const DECK_CARD_KIND_LABELS: Record<DeckCardKind, string> = {
-	qa: '问答型',
-	truefalse: '判断型',
-	choice: '选择型',
-	cloze: '填空型',
+  qa: '问答型',
+  truefalse: '判断型',
+  choice: '选择型',
+  cloze: '填空型',
 };
 
 /** Which kinds are selectable today. */
 export const DECK_CARD_KIND_AVAILABLE: Record<DeckCardKind, boolean> = {
-	qa: true,
-	truefalse: false,
-	choice: false,
-	cloze: false,
+  qa: true,
+  truefalse: false,
+  choice: false,
+  cloze: false,
 };
 
 export function normalizeDeckCardKind(
-	value: string | undefined | null,
+  value: string | undefined | null,
 ): DeckCardKind {
-	if (value && (DECK_CARD_KIND_IDS as string[]).includes(value)) {
-		return value as DeckCardKind;
-	}
-	return 'qa';
+  if (value && (DECK_CARD_KIND_IDS as string[]).includes(value)) {
+    return value as DeckCardKind;
+  }
+  return 'qa';
 }
 
 export function isReversibleDeckTemplate(
-	id: string,
-	style?: DeckTemplateStyle | null,
+  id: string,
+  style?: DeckTemplateStyle | null,
 ): boolean {
-	if (id === 'ob-deck-basic++') {
-		return true;
-	}
-	return style?.reversible === true;
+  if (id === 'ob-deck-basic++') {
+    return true;
+  }
+  return style?.reversible === true;
 }
 
 export const DEFAULT_CARD_CSS = `
@@ -513,34 +523,86 @@ export const DEFAULT_CARD_BACK = `
 {{/ob-deck-backlink}}
 `;
 
+/**
+ * Reverse Card 2 Front: original answer (`ob-deck-back`) is the prompt.
+ * Edit freely in settings — do not rely on auto field-swap.
+ */
+export const DEFAULT_REVERSE_CARD_FRONT = `
+<div class="dta-card">
+  {{#ob-deck-tree}}
+  <div class="dta-tree">{{ob-deck-tree}}</div>
+  {{/ob-deck-tree}}
+  {{#ob-deck-back}}
+  <div class="dta-front">{{ob-deck-back}}</div>
+  {{/ob-deck-back}}
+  {{#ob-deck-tags}}
+  <div class="dta-tags">{{ob-deck-tags}}</div>
+  {{/ob-deck-tags}}
+</div>
+{{#ob-deck-backlink}}
+<div class="dta-backlink">{{ob-deck-backlink}}</div>
+{{/ob-deck-backlink}}
+`;
+
+/**
+ * Reverse Card 2 Back: prompt reminder + original question (head / front).
+ */
+export const DEFAULT_REVERSE_CARD_BACK = `
+<div class="dta-card">
+  {{#ob-deck-tree}}
+  <div class="dta-tree">{{ob-deck-tree}}</div>
+  {{/ob-deck-tree}}
+  {{#ob-deck-back}}
+  <div class="dta-front">{{ob-deck-back}}</div>
+  {{/ob-deck-back}}
+  <div class="dta-divider"></div>
+  {{#ob-deck-head}}
+  <div class="dta-title">{{ob-deck-head}}</div>
+  {{/ob-deck-head}}
+  {{#ob-deck-front}}
+  <div class="dta-answer">{{ob-deck-front}}</div>
+  {{/ob-deck-front}}
+  {{#ob-deck-tags}}
+  <div class="dta-tags">{{ob-deck-tags}}</div>
+  {{/ob-deck-tags}}
+</div>
+{{#ob-deck-backlink}}
+<div class="dta-backlink">{{ob-deck-backlink}}</div>
+{{/ob-deck-backlink}}
+`;
+
 export function defaultStyleFor(id: DeckTemplateId): DeckTemplateStyle {
-	return {
-		front: DEFAULT_CARD_FRONT,
-		back: DEFAULT_CARD_BACK,
-		css: DEFAULT_CARD_CSS,
-		reversible: id === 'ob-deck-basic++',
-		kind: 'qa',
-	};
+  return {
+    front: DEFAULT_CARD_FRONT,
+    back: DEFAULT_CARD_BACK,
+    reverseFront: DEFAULT_REVERSE_CARD_FRONT,
+    reverseBack: DEFAULT_REVERSE_CARD_BACK,
+    css: DEFAULT_CARD_CSS,
+    reversible: id === 'ob-deck-basic++',
+    kind: 'qa',
+  };
+}
+
+/** Resolved Card 2 Front/Back HTML (user-defined, else defaults). */
+export function resolveReverseCardSides(style: DeckTemplateStyle): {
+  Front: string;
+  Back: string;
+} {
+  const front = (style.reverseFront ?? '').trim();
+  const back = (style.reverseBack ?? '').trim();
+  return {
+    Front: front || DEFAULT_REVERSE_CARD_FRONT,
+    Back: back || DEFAULT_REVERSE_CARD_BACK,
+  };
 }
 
 export function createDefaultDeckTemplateStyles(): Record<
-	string,
-	DeckTemplateStyle
+  string,
+  DeckTemplateStyle
 > {
-	return {
-		'ob-deck-basic': defaultStyleFor('ob-deck-basic'),
-		'ob-deck-basic++': defaultStyleFor('ob-deck-basic++'),
-	};
+  return {
+    'ob-deck-basic': defaultStyleFor('ob-deck-basic'),
+    'ob-deck-basic++': defaultStyleFor('ob-deck-basic++'),
+  };
 }
 
-/** Swap ob-deck-front / ob-deck-back for the reverse card of basic++. */
-export function swapFrontBackFields(html: string): string {
-	return html
-		.replace(/\{\{#ob-deck-front\}\}/g, '{{#__DTA_BACK__}}')
-		.replace(/\{\{\/ob-deck-front\}\}/g, '{{/__DTA_BACK__}}')
-		.replace(/\{\{ob-deck-front\}\}/g, '{{__DTA_BACK__}}')
-		.replace(/\{\{#ob-deck-back\}\}/g, '{{#ob-deck-front}}')
-		.replace(/\{\{\/ob-deck-back\}\}/g, '{{/ob-deck-front}}')
-		.replace(/\{\{ob-deck-back\}\}/g, '{{ob-deck-front}}')
-		.replace(/__DTA_BACK__/g, 'ob-deck-back');
-}

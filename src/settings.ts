@@ -34,7 +34,7 @@ import { renderScanScopeSettings } from './ui/settings/renderScanScopeSettings';
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
 /** Bump when shipping new built-in card Front/Back/CSS. */
-export const DECK_TEMPLATE_STYLE_VERSION = 8;
+export const DECK_TEMPLATE_STYLE_VERSION = 9;
 
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;
@@ -205,6 +205,9 @@ export function mergeSettings(
 				out[id] = {
 					front: saved.front ?? basicDefault.front,
 					back: saved.back ?? basicDefault.back,
+					reverseFront:
+						saved.reverseFront ?? basicDefault.reverseFront,
+					reverseBack: saved.reverseBack ?? basicDefault.reverseBack,
 					css: saved.css ?? basicDefault.css,
 					reversible: saved.reversible === true,
 					kind: normalizeDeckCardKind(saved.kind),
@@ -232,6 +235,10 @@ export function mergeSettings(
 				styles[id] = {
 					front: saved.front ?? builtinDefault.front,
 					back: saved.back ?? builtinDefault.back,
+					reverseFront:
+						saved.reverseFront ?? builtinDefault.reverseFront,
+					reverseBack:
+						saved.reverseBack ?? builtinDefault.reverseBack,
 					css: saved.css ?? builtinDefault.css,
 					reversible: id === 'ob-deck-basic++',
 					kind: normalizeDeckCardKind(saved.kind),
@@ -1013,7 +1020,10 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			const resetBtn = actions.createEl('button', {
 				cls: 'dta-template-text-btn is-warning',
 				text: '重置',
-				attr: { type: 'button', title: '重置 Front / Back / CSS' },
+				attr: {
+					type: 'button',
+					title: '重置 Front / Back / 翻转 HTML / CSS',
+				},
 			});
 			resetBtn.addEventListener('click', async (event) => {
 				event.preventDefault();
@@ -1023,6 +1033,8 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				this.plugin.settings.deckTemplateStyles[id] = {
 					front: defaults.front,
 					back: defaults.back,
+					reverseFront: defaults.reverseFront,
+					reverseBack: defaults.reverseBack,
 					css: defaults.css,
 					reversible: isReversibleDeckTemplate(id, prev),
 					kind: normalizeDeckCardKind(prev.kind),
@@ -1254,25 +1266,42 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				});
 			});
 
+		const reversible = isReversibleDeckTemplate(id, style);
+
 		new Setting(body)
 			.setName('是否翻转')
+			.setDesc('开启后使用下方翻转正/反面 HTML 生成 Anki Card 2')
 			.addToggle((toggle) => {
 				const locked = id === 'ob-deck-basic++';
 				toggle
-					.setValue(isReversibleDeckTemplate(id, style))
+					.setValue(reversible)
 					.setDisabled(locked)
 					.onChange(async (value) => {
 						if (id === 'ob-deck-basic++') {
 							return;
 						}
-						await this.persistStyle(id, { reversible: value });
+						const defaults = defaultStyleFor(id);
+						await this.persistStyle(id, {
+							reversible: value,
+							...(value
+								? {
+										reverseFront:
+											style.reverseFront ??
+											defaults.reverseFront,
+										reverseBack:
+											style.reverseBack ??
+											defaults.reverseBack,
+									}
+								: {}),
+						});
+						this.display();
 					});
 			});
 
 		this.addTemplateTextArea(
 			body,
-			'Front HTML',
-			'',
+			'正面 HTML（Card 1）',
+			'问题侧：通常用 {{ob-deck-head}} / {{ob-deck-front}}',
 			style.front,
 			async (value) => {
 				await this.persistStyle(id, { front: value });
@@ -1281,13 +1310,44 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		this.addTemplateTextArea(
 			body,
-			'Back HTML',
-			'',
+			'背面 HTML（Card 1）',
+			'答案侧：通常在正面字段后展示 {{ob-deck-back}}',
 			style.back,
 			async (value) => {
 				await this.persistStyle(id, { back: value });
 			},
 		);
+
+		if (reversible) {
+			const reverseFront =
+				(style.reverseFront ?? '').trim() ||
+				defaultStyleFor(id).reverseFront ||
+				'';
+			const reverseBack =
+				(style.reverseBack ?? '').trim() ||
+				defaultStyleFor(id).reverseBack ||
+				'';
+
+			this.addTemplateTextArea(
+				body,
+				'翻转正面 HTML（Card 2）',
+				'翻转后的问题侧：自行指定字段，默认用 {{ob-deck-back}} 作问题',
+				reverseFront,
+				async (value) => {
+					await this.persistStyle(id, { reverseFront: value });
+				},
+			);
+
+			this.addTemplateTextArea(
+				body,
+				'翻转背面 HTML（Card 2）',
+				'翻转后的答案侧：自行指定字段，默认用 head/front 作答案',
+				reverseBack,
+				async (value) => {
+					await this.persistStyle(id, { reverseBack: value });
+				},
+			);
+		}
 
 		this.addTemplateTextArea(
 			body,

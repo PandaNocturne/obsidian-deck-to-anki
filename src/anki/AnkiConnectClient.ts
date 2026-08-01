@@ -16,7 +16,7 @@ export class AnkiConnectError extends Error {
  * Thin AnkiConnect (v6) client.
  */
 export class AnkiConnectClient {
-	constructor(private readonly getBaseUrl: () => string) {}
+	constructor(private readonly getBaseUrl: () => string) { }
 
 	async ping(): Promise<number> {
 		return this.invoke<number>('version', {});
@@ -132,6 +132,20 @@ export class AnkiConnectClient {
 		});
 	}
 
+	/**
+	 * Add a card template to an existing model (or update if the name exists).
+	 * `updateModelTemplates` cannot create new card types.
+	 */
+	async modelTemplateAdd(
+		modelName: string,
+		template: { Name: string; Front: string; Back: string },
+	): Promise<void> {
+		await this.invoke('modelTemplateAdd', {
+			modelName,
+			template,
+		});
+	}
+
 	async updateModelStyling(modelName: string, css: string): Promise<void> {
 		await this.invoke('updateModelStyling', {
 			model: {
@@ -202,12 +216,12 @@ export class AnkiConnectClient {
 		const parse = (
 			raw:
 				| Array<{
-						noteId?: number;
-						cards?: number[];
-						tags?: string[];
-						modelName?: string;
-						fields?: Record<string, { value?: string }>;
-				  } | null>
+					noteId?: number;
+					cards?: number[];
+					tags?: string[];
+					modelName?: string;
+					fields?: Record<string, { value?: string }>;
+				} | null>
 				| null
 				| undefined,
 		) => {

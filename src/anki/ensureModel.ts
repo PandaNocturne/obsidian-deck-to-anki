@@ -6,7 +6,7 @@ import {
 	FIELD_TREE,
 	MODEL_FIELDS,
 	isReversibleDeckTemplate,
-	swapFrontBackFields,
+	resolveReverseCardSides,
 	type DeckTemplateId,
 	type DeckTemplateStyle,
 } from './templates';
@@ -24,6 +24,7 @@ function buildCardTemplates(
 	style: DeckTemplateStyle,
 ): Array<{ Name: string; Front: string; Back: string }> {
 	if (isReversibleDeckTemplate(templateId, style)) {
+		const reverse = resolveReverseCardSides(style);
 		return [
 			{
 				Name: 'Card 1',
@@ -32,8 +33,8 @@ function buildCardTemplates(
 			},
 			{
 				Name: 'Card 2',
-				Front: swapFrontBackFields(style.front),
-				Back: swapFrontBackFields(style.back),
+				Front: reverse.Front,
+				Back: reverse.Back,
 			},
 		];
 	}
@@ -135,6 +136,35 @@ export async function ensureModelFields(
 }
 
 /**
+ * Ensure reverse Card 2 exists when the style is reversible.
+ * `updateModelTemplates` cannot create new card types.
+ */
+async function ensureReverseCardTemplate(
+	client: AnkiConnectClient,
+	templateId: DeckTemplateId,
+	style: DeckTemplateStyle,
+	force: boolean,
+): Promise<boolean> {
+	if (!isReversibleDeckTemplate(templateId, style)) {
+		return false;
+	}
+	const live = await client.modelTemplates(templateId);
+	const liveNames = Object.keys(live);
+	const reverse = resolveReverseCardSides(style);
+	const missing = liveNames.length < 2;
+	if (!missing && !force) {
+		return false;
+	}
+	const name = liveNames[1] ?? 'Card 2';
+	await client.modelTemplateAdd(templateId, {
+		Name: name,
+		Front: reverse.Front,
+		Back: reverse.Back,
+	});
+	return true;
+}
+
+/**
  * Ensure the selected ob-deck model exists in Anki.
  * Always migrates/adds ob-deck-* fields when the model already exists.
  * Templates/CSS are applied on first create, or whenever `force` is true.
@@ -162,32 +192,34 @@ export async function ensureDeckTemplateModel(
 	// Existing models must gain the new field names before any note sync.
 	await ensureModelFields(client, templateId);
 
+	const reverseAdded = await ensureReverseCardTemplate(
+		client,
+		templateId,
+		style,
+		force,
+	);
+
 	if (!force) {
-		return 'exists';
+		return reverseAdded ? 'updated' : 'exists';
 	}
 
 	// Use live template names from Anki (may not be exactly "Card 1").
 	const live = await client.modelTemplates(templateId);
 	const liveNames = Object.keys(live);
 	const templatesMap: Record<string, { Front: string; Back: string }> = {};
+	const reverse = resolveReverseCardSides(style);
 
 	if (liveNames.length === 0) {
 		templatesMap['Card 1'] = { Front: style.front, Back: style.back };
 		if (isReversibleDeckTemplate(templateId, style)) {
-			templatesMap['Card 2'] = {
-				Front: swapFrontBackFields(style.front),
-				Back: swapFrontBackFields(style.back),
-			};
+			templatesMap['Card 2'] = reverse;
 		}
 	} else {
 		const primary = liveNames[0]!;
 		templatesMap[primary] = { Front: style.front, Back: style.back };
 		if (isReversibleDeckTemplate(templateId, style)) {
 			const second = liveNames[1] ?? 'Card 2';
-			templatesMap[second] = {
-				Front: swapFrontBackFields(style.front),
-				Back: swapFrontBackFields(style.back),
-			};
+			templatesMap[second] = reverse;
 		}
 	}
 

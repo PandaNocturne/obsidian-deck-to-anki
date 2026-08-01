@@ -1,14 +1,15 @@
 import type { AnkiConnectClient } from './AnkiConnectClient';
 import {
+	DEFAULT_REVERSE_CARD_BACK,
+	DEFAULT_REVERSE_CARD_FRONT,
 	defaultStyleFor,
 	isReversibleDeckTemplate,
 	normalizeDeckCardKind,
-	swapFrontBackFields,
 	type DeckTemplateStyle,
 } from './templates';
 
 /**
- * Pull Front / Back / CSS from an existing Anki note type into local style.
+ * Pull Front / Back / CSS (and Card 2 reverse HTML when present) from Anki.
  */
 export async function importDeckTemplateStyleFromAnki(
 	client: AnkiConnectClient,
@@ -30,19 +31,17 @@ export async function importDeckTemplateStyleFromAnki(
 	const front = primary.Front ?? '';
 	const back = primary.Back ?? '';
 
+	let reverseFront =
+		(previous?.reverseFront ?? '').trim() || DEFAULT_REVERSE_CARD_FRONT;
+	let reverseBack =
+		(previous?.reverseBack ?? '').trim() || DEFAULT_REVERSE_CARD_BACK;
 	let reversible = isReversibleDeckTemplate(modelName, previous);
+
 	if (names.length >= 2) {
 		const second = templates[names[1]!]!;
-		const expectFront = swapFrontBackFields(front);
-		const expectBack = swapFrontBackFields(back);
-		if (
-			(second.Front ?? '') === expectFront &&
-			(second.Back ?? '') === expectBack
-		) {
-			reversible = true;
-		} else if (names.length >= 2) {
-			reversible = true;
-		}
+		reverseFront = second.Front ?? reverseFront;
+		reverseBack = second.Back ?? reverseBack;
+		reversible = true;
 	} else if (modelName !== 'ob-deck-basic++') {
 		reversible = false;
 	}
@@ -53,6 +52,8 @@ export async function importDeckTemplateStyleFromAnki(
 	return {
 		front,
 		back,
+		reverseFront,
+		reverseBack,
 		css,
 		reversible: modelName === 'ob-deck-basic++' ? true : reversible,
 		kind: normalizeDeckCardKind(previous?.kind),
@@ -64,6 +65,8 @@ export function blankCustomTemplateStyle(): DeckTemplateStyle {
 	return {
 		front: base.front,
 		back: base.back,
+		reverseFront: base.reverseFront,
+		reverseBack: base.reverseBack,
 		css: base.css,
 		reversible: false,
 		kind: 'qa',
