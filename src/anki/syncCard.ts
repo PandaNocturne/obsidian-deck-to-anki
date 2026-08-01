@@ -115,16 +115,22 @@ function fieldNamesInTemplateHtml(html: string): string[] {
 }
 
 /**
- * Make sure addNote won't hit "cannot create note because it is empty":
- * - Mirror ob-deck-* into legacy Front/Back when those fields still exist
- * - If the live Front templates only reference empty fields, copy content into them
- * - Last resort: put plain-text fallback into ob-deck-front / Front
+ * Make sure addNote won't hit "cannot create note because it is empty".
+ *
+ * AnkiConnect checks the model's **first field** (`note.fields[0]`): if it is
+ * blank, addNote fails even when other fields have content. Our first field is
+ * usually `ob-deck-head`.
+ *
+ * Also:
+ * - Mirror into legacy Front/Back when those fields still exist
+ * - Fill Front-template fields that would otherwise render blank
  */
 function ensureFieldsNonEmptyForAnki(
 	fields: Record<string, string>,
 	allowed: Set<string>,
 	frontTemplateHtml: string,
 	plainFallback: string,
+	firstFieldName?: string,
 ): void {
 	const front = fields[FIELD_FRONT] ?? '';
 	const head = fields[FIELD_HEAD] ?? '';
@@ -137,26 +143,58 @@ function ensureFieldsNonEmptyForAnki(
 			? `<p>${escapeHtmlText(plainFallback.trim())}</p>`
 			: '');
 
+	if (!best) {
+		return;
+	}
+
+	// Critical for AnkiConnect: first field must be non-empty.
+	if (
+		firstFieldName &&
+		allowed.has(firstFieldName) &&
+		!fieldHasContent(fields[firstFieldName])
+	) {
+		fields[firstFieldName] = best;
+	}
+
+	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
+	const usesHead = referenced.includes(FIELD_HEAD);
+	const usesFront =
+		referenced.includes(FIELD_FRONT) || referenced.includes('Front');
+
+	// Avoid rendering the same HTML twice when we mirrored front → head.
+	// Default template references both; assume that when template info is missing.
+	if (
+		fieldHasContent(fields[FIELD_HEAD]) &&
+		fields[FIELD_HEAD] === fields[FIELD_FRONT] &&
+		((usesHead && usesFront) || referenced.length === 0)
+	) {
+		fields[FIELD_FRONT] = '';
+	}
+
+	// Templates that only reference front (or legacy Front) still need content.
 	if (!fieldHasContent(fields[FIELD_FRONT]) && best) {
-		fields[FIELD_FRONT] = best;
+		const frontOnly = usesFront && !usesHead;
+		if (frontOnly || !fieldHasContent(fields[FIELD_HEAD])) {
+			fields[FIELD_FRONT] = best;
+		}
 	}
 
 	// Legacy Basic-style fields (still present when rename failed / mixed models).
 	if (allowed.has('Front') && !fieldHasContent(fields.Front)) {
-		fields.Front = fields[FIELD_FRONT] || best;
+		fields.Front =
+			fields[FIELD_FRONT] || fields[FIELD_HEAD] || best;
 	}
 	if (allowed.has('Back') && !fieldHasContent(fields.Back)) {
 		fields.Back = fields[FIELD_BACK] || '';
 	}
 
-	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
 	if (referenced.length === 0) {
 		return;
 	}
 	const anyReferencedFilled = referenced.some((name) =>
 		fieldHasContent(fields[name]),
 	);
-	if (anyReferencedFilled || !best) {
+	if (anyReferencedFilled) {
 		return;
 	}
 	// Live Anki Front template still points at empty fields (e.g. only {{Front}}
@@ -230,11 +268,13 @@ async function upsertAnkiNote(
 		liveFrontTemplates = '';
 	}
 
+	const firstFieldName = modelFields[0];
 	ensureFieldsNonEmptyForAnki(
 		fields,
 		allowed,
 		liveFrontTemplates,
 		input.plainFallback ?? '',
+		firstFieldName,
 	);
 
 	if (
@@ -244,6 +284,15 @@ async function upsertAnkiNote(
 	) {
 		throw new Error(
 			'卡片正面渲染后为空，Anki 无法创建笔记。请检查正文，或到插件设置对该模板「强制更新」。',
+		);
+	}
+	if (
+		firstFieldName &&
+		allowed.has(firstFieldName) &&
+		!fieldHasContent(fields[firstFieldName])
+	) {
+		throw new Error(
+			`笔记首字段「${firstFieldName}」为空，AnkiConnect 会拒绝创建。请检查标题/正文，或到插件设置对该模板「强制更新」。`,
 		);
 	}
 
@@ -330,7 +379,7 @@ async function upsertAnkiNote(
 			}
 			const looksEmpty = /empty|为空/i.test(msg);
 			const hint = looksEmpty
-				? '（多为 Anki 模板仍用旧字段 Front/Back，或正面字段为空。已尝试兼容写入；请到插件设置对该模板点「强制更新」后重试）'
+				? '（AnkiConnect 要求笔记首字段非空；或模板仍用旧 Front/Back。已尝试兼容写入；请到插件设置对该模板点「强制更新」后重试）'
 				: '';
 			throw new Error(`Anki addNote 失败：${msg}${hint}`);
 		}
@@ -452,12 +501,6 @@ export async function syncCardToAnki(
 		throw new Error(
 			'卡片正面/标题/背面渲染后均为空，Anki 无法创建笔记。请检查正文与公式（$…$）是否成对。',
 		);
-	}
-	// Anki empty-note check uses fields on the card Front template; ensure
-	// Front is non-empty when we only have Head (title-only / legacy templates).
-	if (!frontHtml && headHtml) {
-		payload.fields[FIELD_FRONT] = headHtml;
-		payload.fields[FIELD_HEAD] = '';
 	}
 
 	// If Anki's live Front template still uses legacy {{Front}} (or is blank),
