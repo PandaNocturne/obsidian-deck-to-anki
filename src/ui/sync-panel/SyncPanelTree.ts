@@ -520,21 +520,7 @@ function renderCard(
 		});
 	}
 
-	if (card.deckClass === 'card' && handlers.onCardSettings) {
-		const settingsBtn = row.createEl('button', {
-			cls: 'dta-sync-action clickable-icon',
-			attr: {
-				'aria-label': '牌组 YAML 设置',
-				title: '牌组 YAML 设置',
-			},
-		});
-		setIcon(settingsBtn, 'settings');
-		settingsBtn.addEventListener('click', (evt) => {
-			evt.stopPropagation();
-			handlers.onCardSettings?.(card);
-		});
-	}
-
+	// Left → right: preview, settings, sync, checkbox.
 	if (handlers.onCardPreview) {
 		const previewBtn = row.createEl('button', {
 			cls: 'dta-sync-action clickable-icon',
@@ -547,6 +533,21 @@ function renderCard(
 		previewBtn.addEventListener('click', (evt) => {
 			evt.stopPropagation();
 			handlers.onCardPreview?.(card);
+		});
+	}
+
+	if (card.deckClass === 'card' && handlers.onCardSettings) {
+		const settingsBtn = row.createEl('button', {
+			cls: 'dta-sync-action clickable-icon',
+			attr: {
+				'aria-label': '牌组 YAML 设置',
+				title: '牌组 YAML 设置',
+			},
+		});
+		setIcon(settingsBtn, 'settings');
+		settingsBtn.addEventListener('click', (evt) => {
+			evt.stopPropagation();
+			handlers.onCardSettings?.(card);
 		});
 	}
 
