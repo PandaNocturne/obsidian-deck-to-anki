@@ -12,6 +12,9 @@ export type SyncCardStatus =
 	| 'unsynced'
 	| 'deleted';
 
+/** Panel badge / checkbox colors (includes local-only states). */
+export type SyncDisplayStatus = SyncCardStatus | 'pending' | 'empty';
+
 export interface IdMarkerInfo {
 	noteId: number;
 	raw: string;

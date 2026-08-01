@@ -1,4 +1,4 @@
-import { isHeadTitleOnlyCard } from '../../domain/head/isHeadTitleOnlyCard';
+import { isEmptyBackCard } from '../../domain/head/isEmptyBackCard';
 import type {
 	CardNode,
 	DeletedAnkiCardNode,
@@ -102,8 +102,8 @@ export class SyncPanelState {
 		if (node.kind === 'deleted-anki') {
 			return this.autoSelectDeleted;
 		}
-		// Empty title-only heads stay unchecked; synced greens stay checked.
-		if (node.kind === 'card' && isHeadTitleOnlyCard(node)) {
+		// Empty-back cards stay unchecked after parse.
+		if (node.kind === 'card' && isEmptyBackCard(node)) {
 			return false;
 		}
 		return true;
@@ -272,7 +272,7 @@ export class SyncPanelState {
 	setSelectedCascade(node: SyncSelectableNode, selected: boolean): void {
 		if (node.kind === 'card' || node.kind === 'deleted-anki') {
 			if (selected && !this.shouldSelectLeaf(node) && node.kind === 'card') {
-				// Allow explicit user check of title-only heads via leaf click.
+				// Allow explicit user check of empty-back cards via leaf click.
 				this.selected.add(node.id);
 				return;
 			}
@@ -294,7 +294,7 @@ export class SyncPanelState {
 			if (
 				selected &&
 				child.kind === 'card' &&
-				isHeadTitleOnlyCard(child)
+				isEmptyBackCard(child)
 			) {
 				this.selected.delete(child.id);
 				continue;
@@ -303,7 +303,7 @@ export class SyncPanelState {
 		}
 	}
 
-	/** Re-apply default selection (title-only still skipped). */
+	/** Re-apply default selection (empty-back cards still skipped). */
 	reselectByStatus(root: DeckNode): void {
 		this.root = root;
 		this.selected.clear();

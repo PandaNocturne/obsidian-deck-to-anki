@@ -697,6 +697,9 @@ if you want to view the source, please visit the github repository of this plugi
 .dta-sync-status-badge--pending {
   background: #64748b;
 }
+.dta-sync-status-badge--empty {
+  background: #0d9488;
+}
 .dta-sync-status-badge--deleted {
   background: #dc2626;
 }
@@ -711,6 +714,9 @@ if you want to view the source, please visit the github repository of this plugi
 }
 .dta-sync-check--pending {
   accent-color: #64748b;
+}
+.dta-sync-check--empty {
+  accent-color: #0d9488;
 }
 .dta-sync-check--deleted {
   accent-color: #dc2626;
@@ -757,6 +763,11 @@ if you want to view the source, please visit the github repository of this plugi
   color: #475569;
   border-color: color-mix(in srgb, #64748b 45%, var(--background-modifier-border));
   background: color-mix(in srgb, #64748b 14%, transparent);
+}
+.dta-sync-id--empty {
+  color: #0f766e;
+  border-color: color-mix(in srgb, #0d9488 45%, var(--background-modifier-border));
+  background: color-mix(in srgb, #0d9488 14%, transparent);
 }
 .dta-sync-id--deleted {
   color: #b91c1c;

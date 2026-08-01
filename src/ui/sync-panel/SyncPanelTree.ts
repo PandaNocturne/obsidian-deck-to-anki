@@ -1,12 +1,13 @@
 import { setIcon } from 'obsidian';
 import { countSyncStatusInDeck } from '../../anki/syncStatus';
+import { isEmptyBackCard } from '../../domain/head/isEmptyBackCard';
 import type {
 	CardNode,
 	DeckClass,
 	DeckNode,
 	DeckType,
 	DeletedAnkiCardNode,
-	SyncCardStatus,
+	SyncDisplayStatus,
 } from '../../domain/head/types';
 import type { SyncPanelState, SyncSelectableNode } from './SyncPanelState';
 
@@ -137,7 +138,14 @@ function resolveCardIcon(deckClass: DeckClass): string {
 	}
 }
 
-function statusCheckClass(status: SyncCardStatus | undefined): string {
+function cardDisplayStatus(card: CardNode): SyncDisplayStatus {
+	if (isEmptyBackCard(card)) {
+		return 'empty';
+	}
+	return card.syncStatus ?? 'pending';
+}
+
+function statusCheckClass(status: SyncDisplayStatus | undefined): string {
 	switch (status) {
 		case 'synced':
 			return 'dta-sync-check--synced';
@@ -147,12 +155,14 @@ function statusCheckClass(status: SyncCardStatus | undefined): string {
 			return 'dta-sync-check--deleted';
 		case 'unsynced':
 			return 'dta-sync-check--unsynced';
+		case 'empty':
+			return 'dta-sync-check--empty';
 		default:
 			return 'dta-sync-check--pending';
 	}
 }
 
-function statusIdClass(status: SyncCardStatus | undefined): string {
+function statusIdClass(status: SyncDisplayStatus | undefined): string {
 	switch (status) {
 		case 'synced':
 			return 'dta-sync-id--synced';
@@ -162,6 +172,8 @@ function statusIdClass(status: SyncCardStatus | undefined): string {
 			return 'dta-sync-id--deleted';
 		case 'unsynced':
 			return 'dta-sync-id--unsynced';
+		case 'empty':
+			return 'dta-sync-id--empty';
 		default:
 			return 'dta-sync-id--pending';
 	}
@@ -169,15 +181,16 @@ function statusIdClass(status: SyncCardStatus | undefined): string {
 
 function renderStatusBadges(
 	parent: HTMLElement,
-	counts: Record<SyncCardStatus | 'pending', number>,
+	counts: Record<SyncDisplayStatus, number>,
 ): void {
 	const order: Array<{
-		key: SyncCardStatus | 'pending';
+		key: SyncDisplayStatus;
 		title: string;
 	}> = [
 		{ key: 'synced', title: '已同步' },
 		{ key: 'modified', title: '被修改' },
 		{ key: 'unsynced', title: '未同步' },
+		{ key: 'empty', title: '背面为空' },
 		{ key: 'pending', title: '未检测' },
 		{ key: 'deleted', title: '已删除' },
 	];
@@ -496,9 +509,11 @@ function renderCard(
 		}
 	}
 
+	const displayStatus = cardDisplayStatus(card);
+
 	if (card.noteId !== undefined) {
 		const idEl = row.createSpan({
-			cls: `dta-sync-id ${statusIdClass(card.syncStatus)}`,
+			cls: `dta-sync-id ${statusIdClass(displayStatus)}`,
 			text: `ID ${card.noteId}`,
 			attr: {
 				title: handlers.onOpenInAnki
@@ -515,8 +530,14 @@ function renderCard(
 		}
 	} else if (card.blockId) {
 		row.createSpan({
-			cls: `dta-sync-id ${statusIdClass(card.syncStatus)}`,
+			cls: `dta-sync-id ${statusIdClass(displayStatus)}`,
 			text: `^${card.blockId}`,
+		});
+	} else if (displayStatus === 'empty') {
+		row.createSpan({
+			cls: `dta-sync-id ${statusIdClass(displayStatus)}`,
+			text: '空',
+			attr: { title: '背面为空' },
 		});
 	}
 
@@ -557,7 +578,7 @@ function renderCard(
 
 	const checkbox = row.createEl('input', {
 		type: 'checkbox',
-		cls: `dta-sync-check ${statusCheckClass(card.syncStatus)}`,
+		cls: `dta-sync-check ${statusCheckClass(displayStatus)}`,
 	});
 	checkbox.checked = state.isSelected(card.id);
 	checkbox.addEventListener('click', (evt) => {

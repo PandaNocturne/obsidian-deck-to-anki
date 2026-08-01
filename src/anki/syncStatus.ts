@@ -5,8 +5,10 @@ import type {
 	DeletedAnkiCardNode,
 	DeckNode,
 	SyncCardStatus,
+	SyncDisplayStatus,
 	SyncTreeChild,
 } from '../domain/head/types';
+import { isEmptyBackCard } from '../domain/head/isEmptyBackCard';
 import { AnkiConnectClient } from './AnkiConnectClient';
 import {
 	toAnkiDeckName,
@@ -1001,20 +1003,23 @@ export async function prefetchSyncStatus(
 }
 
 export function countSyncStatusInDeck(deck: DeckNode): Record<
-	SyncCardStatus | 'pending',
+	SyncDisplayStatus,
 	number
 > {
-	const counts: Record<SyncCardStatus | 'pending', number> = {
+	const counts: Record<SyncDisplayStatus, number> = {
 		synced: 0,
 		modified: 0,
 		unsynced: 0,
 		deleted: 0,
 		pending: 0,
+		empty: 0,
 	};
 	const walk = (node: DeckNode) => {
 		for (const child of node.children) {
 			if (child.kind === 'card') {
-				if (child.syncStatus === undefined) {
+				if (isEmptyBackCard(child)) {
+					counts.empty += 1;
+				} else if (child.syncStatus === undefined) {
 					counts.pending += 1;
 				} else {
 					counts[child.syncStatus] += 1;
