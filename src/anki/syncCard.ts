@@ -12,6 +12,7 @@ import {
 	allDeckTemplateIdsOrdered,
 	defaultStyleFor,
 	FIELD_BACK,
+	FIELD_BACKLINK,
 	FIELD_FRONT,
 	FIELD_HEAD,
 	FIELD_ID,
@@ -501,7 +502,18 @@ export async function syncCardToAnki(
 	// Existing models must gain the new field names before any note sync.
 	await ensureDeckTemplateModel(client, templateId, style, false);
 
-	const payload = await buildAnkiNoteFieldPayload(app, settings, card, {
+	// List cards use ^noteId as block id for backlinks; mirror that before
+	// building fields when we already know the Anki id.
+	let syncCard: CardNode = card;
+	if (
+		card.deckClass === 'list' &&
+		card.noteId !== undefined &&
+		card.blockId !== String(card.noteId)
+	) {
+		syncCard = { ...card, blockId: String(card.noteId) };
+	}
+
+	const payload = await buildAnkiNoteFieldPayload(app, settings, syncCard, {
 		mediaCache: options?.mediaCache,
 		freshNoteContent: true,
 	});
@@ -520,7 +532,7 @@ export async function syncCardToAnki(
 	const frontHtml = (payload.fields[FIELD_FRONT] ?? '').trim();
 	const headHtml = (payload.fields[FIELD_HEAD] ?? '').trim();
 	const backHtml = (payload.fields[FIELD_BACK] ?? '').trim();
-	const plainFallback = (card.front || card.navTitle || '').trim();
+	const plainFallback = (syncCard.front || syncCard.navTitle || '').trim();
 	if (!frontHtml && !headHtml && !backHtml && !plainFallback) {
 		throw new Error(
 			'卡片正面/标题/背面渲染后均为空，Anki 无法创建笔记。请检查正文与公式（$…$）是否成对。',
@@ -547,38 +559,77 @@ export async function syncCardToAnki(
 		/* non-fatal; ensureFieldsNonEmptyForAnki still dual-writes Front/Back */
 	}
 
-	if (card.deckClass === 'card') {
+	if (syncCard.deckClass === 'card') {
 		payload.fields[FIELD_HEAD] = '';
 	}
-	payload.fields[FIELD_ID] = provisionalDeckIdField(card);
+	payload.fields[FIELD_ID] = provisionalDeckIdField(syncCard);
 
 	const upserted = await upsertAnkiNote(client, {
-		noteId: card.noteId,
+		noteId: syncCard.noteId,
 		deckName,
 		modelName: templateId,
 		fields: payload.fields,
 		tags: payload.tags,
 		deckTagsEnabled: settings.deckTagsEnabled,
 		plainFallback,
-		keepHeadEmpty: card.deckClass === 'card',
+		keepHeadEmpty: syncCard.deckClass === 'card',
 		deckIdValue: payload.fields[FIELD_ID],
 	});
 
+	// After first create / assigning ^id, backlink URI/label depend on noteId.
+	// Patch Anki so the next status check doesn't show "modified".
+	const identityCard: CardNode = {
+		...syncCard,
+		noteId: upserted.noteId,
+		blockId:
+			syncCard.deckClass === 'list'
+				? String(upserted.noteId)
+				: syncCard.blockId,
+	};
+	const needsIdentityFieldRefresh =
+		upserted.created ||
+		syncCard.noteId !== upserted.noteId ||
+		(syncCard.deckClass === 'list' &&
+			syncCard.blockId !== String(upserted.noteId));
+	if (needsIdentityFieldRefresh) {
+		try {
+			const refreshed = await buildAnkiNoteFieldPayload(
+				app,
+				settings,
+				identityCard,
+				{
+					mediaCache: options?.mediaCache,
+					freshNoteContent: true,
+				},
+			);
+			const patch: Record<string, string> = {
+				[FIELD_ID]: String(upserted.noteId),
+			};
+			if (settings.deckCardBacklinkEnabled !== false) {
+				patch[FIELD_BACKLINK] =
+					refreshed.fields[FIELD_BACKLINK] ?? '';
+			}
+			await client.updateNoteFields(upserted.noteId, patch);
+		} catch {
+			/* non-fatal; user can sync again */
+		}
+	}
+
 	// Card → YAML deckID; list → ^noteId on L1 item; head → <!--ID-->.
 	const needsIdWrite =
-		card.deckClass === 'card' ||
+		identityCard.deckClass === 'card' ||
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
-		(card.deckClass === 'list'
+		(identityCard.deckClass === 'list'
 			? card.blockId !== String(upserted.noteId)
 			: !card.idMarker);
 
 	let pendingIdWrite: PendingIdMarkerWrite | undefined;
 	if (needsIdWrite) {
 		if (options?.deferIdWrite) {
-			pendingIdWrite = { card, noteId: upserted.noteId };
+			pendingIdWrite = { card: identityCard, noteId: upserted.noteId };
 		} else {
-			await writeCardIdMarker(app, file, card, upserted.noteId);
+			await writeCardIdMarker(app, file, identityCard, upserted.noteId);
 		}
 	}
 
