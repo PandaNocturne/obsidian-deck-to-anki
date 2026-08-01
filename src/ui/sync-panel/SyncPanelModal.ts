@@ -32,7 +32,11 @@ import { DEFAULT_CARD_HEADING_LEVEL } from '../../settings';
 import { App, MarkdownView, Modal, Notice, setIcon, TFile } from 'obsidian';
 import { openCardPreview } from './CardPreviewModal';
 import { openFileDeckSettings } from './FileDeckSettingsModal';
-import { SyncPanelState, type SyncPanelTab } from './SyncPanelState';
+import {
+	SyncPanelState,
+	type SyncPanelTab,
+	type SyncSelectableNode,
+} from './SyncPanelState';
 import { renderSyncPanelTree } from './SyncPanelTree';
 import { ProgressNotice } from './progressNotice';
 
@@ -447,6 +451,7 @@ export class SyncPanelUI {
 				this.state.deselectAll();
 			} else {
 				this.state.selectAllVisible();
+				this.scheduleCheckOnSelect(this.collectSelectedCards());
 			}
 			this.renderBody();
 			this.refreshToolbarToggleIcons();
@@ -880,10 +885,24 @@ export class SyncPanelUI {
 		}, 0);
 	}
 
-	private async runBackgroundAutoCheck(id: number): Promise<void> {
-		if (id !== this.bgCheckId || this.busy) {
+	/**
+	 * After the user checks cards, optionally refresh Anki status for them
+	 * (settings: autoCheckOnSelect).
+	 */
+	private scheduleCheckOnSelect(cards: CardNode[]): void {
+		if (this.plugin.settings.autoCheckOnSelect === false) {
 			return;
 		}
+		if (this.busy || !this.viewRoot || cards.length === 0) {
+			return;
+		}
+		const id = ++this.bgCheckId;
+		window.setTimeout(() => {
+			void this.runBackgroundCheckCards(id, cards, '勾选');
+		}, 0);
+	}
+
+	private async runBackgroundAutoCheck(id: number): Promise<void> {
 		if (
 			!this.viewRoot ||
 			(this.state.tab !== 'current' && this.state.tab !== 'all')
@@ -896,7 +915,20 @@ export class SyncPanelUI {
 			this.state.tab === 'all'
 				? collectLocalCards(this.viewRoot)
 				: this.collectSelectedCards();
-		if (cards.length === 0) {
+		const label =
+			this.state.tab === 'all' ? '全部' : '勾选';
+		await this.runBackgroundCheckCards(id, cards, label);
+	}
+
+	private async runBackgroundCheckCards(
+		id: number,
+		cards: CardNode[],
+		scopeLabel: string,
+	): Promise<void> {
+		if (id !== this.bgCheckId || this.busy) {
+			return;
+		}
+		if (!this.viewRoot || cards.length === 0) {
 			return;
 		}
 
@@ -908,9 +940,7 @@ export class SyncPanelUI {
 		this.progressBarEl.style.width = '';
 		this.progressLabelEl.setText(`后台检测 ${cards.length} 张…`);
 		this.statusEl.setText(
-			this.state.tab === 'all'
-				? `后台检测全部 ${cards.length} 张卡片…`
-				: `后台检测 ${cards.length} 张勾选卡片…`,
+			`后台检测${scopeLabel} ${cards.length} 张卡片…`,
 		);
 
 		try {
@@ -1235,6 +1265,11 @@ export class SyncPanelUI {
 				onToggleSelect: (node, selected) => {
 					this.state.setSelectedCascade(node, selected);
 					this.renderBody();
+					if (selected) {
+						this.scheduleCheckOnSelect(
+							this.collectSelectedCardsUnder(node),
+						);
+					}
 				},
 				onSyncStub: (node) => {
 					void this.handleSyncNode(node);
@@ -1749,22 +1784,30 @@ export class SyncPanelUI {
 		if (!this.viewRoot) {
 			return [];
 		}
+		return this.collectSelectedCardsUnder(this.viewRoot);
+	}
+
+	/** Collect checked leaf cards under a deck / card node. */
+	private collectSelectedCardsUnder(node: SyncSelectableNode): CardNode[] {
+		if (node.kind === 'card') {
+			return this.state.isSelected(node.id) ? [node] : [];
+		}
+		if (node.kind === 'deleted-anki') {
+			return [];
+		}
 		const out: CardNode[] = [];
-		const walk = (node: DeckNode | CardNode | DeletedAnkiCardNode) => {
-			if (node.kind === 'card') {
-				if (this.state.isSelected(node.id)) {
-					out.push(node);
+		const walk = (deck: DeckNode) => {
+			for (const child of deck.children) {
+				if (child.kind === 'card') {
+					if (this.state.isSelected(child.id)) {
+						out.push(child);
+					}
+				} else if (child.kind === 'deck') {
+					walk(child);
 				}
-				return;
-			}
-			if (node.kind === 'deleted-anki') {
-				return;
-			}
-			for (const child of node.children) {
-				walk(child);
 			}
 		};
-		walk(this.viewRoot);
+		walk(node);
 		return out;
 	}
 

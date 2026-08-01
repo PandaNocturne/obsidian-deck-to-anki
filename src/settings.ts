@@ -97,9 +97,14 @@ export interface DeckToAnkiSettings {
 	autoCheckCurrentNote: boolean;
 	/**
 	 * After parsing the all-cards tab, auto-check Anki status in the
-	 * background. Default on.
+	 * background. Default off.
 	 */
 	autoCheckAllCards: boolean;
+	/**
+	 * When the user checks cards in the sync panel, auto-check Anki status
+	 * for those cards in the background. Default on.
+	 */
+	autoCheckOnSelect: boolean;
 	/**
 	 * When status check finds Anki-only (deleted) notes, auto-check them
 	 * in the sync panel. Default on.
@@ -148,7 +153,8 @@ export const DEFAULT_SETTINGS: DeckToAnkiSettings = {
 	backlinkScheme: 'oburi',
 	advUriUidProperty: 'uid',
 	autoCheckCurrentNote: true,
-	autoCheckAllCards: true,
+	autoCheckAllCards: false,
+	autoCheckOnSelect: true,
 	autoSelectDeletedCards: true,
 	requireCheckBeforeSync: true,
 	deckNumberingEnabled: true,
@@ -259,6 +265,12 @@ export function mergeSettings(
 	}
 	if (typeof base.wikiLinkEnabled !== 'boolean') {
 		base.wikiLinkEnabled = DEFAULT_SETTINGS.wikiLinkEnabled;
+	}
+	if (typeof base.autoCheckAllCards !== 'boolean') {
+		base.autoCheckAllCards = DEFAULT_SETTINGS.autoCheckAllCards;
+	}
+	if (typeof base.autoCheckOnSelect !== 'boolean') {
+		base.autoCheckOnSelect = DEFAULT_SETTINGS.autoCheckOnSelect;
 	}
 	// Legacy unreleased name: originText (detected) → auto.
 	const linkMode = base.backlinkLinkTextMode as string;
@@ -631,13 +643,27 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		new Setting(section)
 			.setName('打开所有卡片自动检测')
 			.setDesc(
-				'解析「所有卡片」后先显示树，再在后台对照 Anki 检测已勾选卡片。默认开启。',
+				'解析「所有卡片」后先显示树，再在后台对照 Anki 检测全部卡片。默认关闭。',
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.autoCheckAllCards !== false)
+					.setValue(this.plugin.settings.autoCheckAllCards === true)
 					.onChange(async (value) => {
 						this.plugin.settings.autoCheckAllCards = value;
+						await this.plugin.saveSettings();
+					}),
+			);
+
+		new Setting(section)
+			.setName('勾选时自动检测')
+			.setDesc(
+				'在同步面板勾选卡片或牌组时，后台对照 Anki 检测刚勾选的卡片。默认开启。',
+			)
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.autoCheckOnSelect !== false)
+					.onChange(async (value) => {
+						this.plugin.settings.autoCheckOnSelect = value;
 						await this.plugin.saveSettings();
 					}),
 			);
