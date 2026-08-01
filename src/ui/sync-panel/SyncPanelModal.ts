@@ -891,7 +891,11 @@ export class SyncPanelUI {
 			return;
 		}
 
-		const cards = this.collectSelectedCards();
+		// All-cards tab starts unchecked; auto-check still scans the whole forest.
+		const cards =
+			this.state.tab === 'all'
+				? collectLocalCards(this.viewRoot)
+				: this.collectSelectedCards();
 		if (cards.length === 0) {
 			return;
 		}
@@ -903,7 +907,11 @@ export class SyncPanelUI {
 		this.progressBarEl.addClass('is-indeterminate');
 		this.progressBarEl.style.width = '';
 		this.progressLabelEl.setText(`后台检测 ${cards.length} 张…`);
-		this.statusEl.setText(`后台检测 ${cards.length} 张勾选卡片…`);
+		this.statusEl.setText(
+			this.state.tab === 'all'
+				? `后台检测全部 ${cards.length} 张卡片…`
+				: `后台检测 ${cards.length} 张勾选卡片…`,
+		);
 
 		try {
 			const result = await prefetchSyncStatusForCards(
@@ -1085,6 +1093,8 @@ export class SyncPanelUI {
 			parseType: this.plugin.settings.defaultDeckType || 'head',
 			cardLevel: this.defaultCardHeadingLevel(),
 			preserveCollapse: options?.preserveCollapse === true,
+			// Forest tabs: never auto-check decks/cards after parse.
+			selectNone: true,
 		});
 		assignSiblingIndexes(result.root);
 	}

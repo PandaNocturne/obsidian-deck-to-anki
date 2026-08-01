@@ -36,6 +36,8 @@ export class SyncPanelState {
 			cardLevel?: number;
 			/** When set, only this subtree is checked (not the whole tree). */
 			selectOnly?: SyncSelectableNode;
+			/** Leave every checkbox unchecked (e.g. all-cards forest tab). */
+			selectNone?: boolean;
 			/** Keep which decks were expanded across re-parse / sync reload. */
 			preserveCollapse?: boolean;
 		},
@@ -61,6 +63,9 @@ export class SyncPanelState {
 			}
 		}
 
+		if (options?.selectNone) {
+			return;
+		}
 		if (options?.selectOnly) {
 			this.selectAll(options.selectOnly);
 		} else {
