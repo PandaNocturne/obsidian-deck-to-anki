@@ -367,7 +367,6 @@ export class SyncPanelUI {
 		});
 		this.progressLabelEl = this.progressEl.createDiv({
 			cls: 'dta-sync-progress-label',
-			text: '就绪',
 		});
 		const track = this.progressEl.createDiv({
 			cls: 'dta-sync-progress-track',
@@ -466,12 +465,12 @@ export class SyncPanelUI {
 		this.progressBarEl.style.width = `${(ratio * 100).toFixed(1)}%`;
 	}
 
-	/** Reset to idle; progress bar stays visible. */
+	/** Hide progress until the next operation. */
 	private hidePanelProgress(): void {
 		this.progressEl.removeClass('is-running');
 		this.progressBarEl.removeClass('is-indeterminate');
 		this.progressBarEl.style.width = '0%';
-		this.progressLabelEl.setText('就绪');
+		this.progressLabelEl.setText('');
 	}
 
 	/** Keep toolbar / footer / row sync buttons disabled + spinning until done. */

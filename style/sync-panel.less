@@ -568,13 +568,15 @@
 }
 
 .dta-sync-progress {
-	display: flex;
+	display: none;
 	flex-direction: column;
 	gap: 0.35rem;
 	padding: 0.15rem 0.05rem 0.05rem;
 	flex-shrink: 0;
 
 	&.is-running {
+		display: flex;
+
 		.dta-sync-progress-label {
 			color: var(--text-normal);
 		}

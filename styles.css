@@ -808,11 +808,14 @@ if you want to view the source, please visit the github repository of this plugi
   grid-template-columns: 1fr 1fr;
 }
 .dta-sync-progress {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 0.35rem;
   padding: 0.15rem 0.05rem 0.05rem;
   flex-shrink: 0;
+}
+.dta-sync-progress.is-running {
+  display: flex;
 }
 .dta-sync-progress.is-running .dta-sync-progress-label {
   color: var(--text-normal);
