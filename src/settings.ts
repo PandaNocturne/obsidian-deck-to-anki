@@ -34,7 +34,7 @@ import { renderScanScopeSettings } from './ui/settings/renderScanScopeSettings';
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
 /** Bump when shipping new built-in card Front/Back/CSS. */
-export const DECK_TEMPLATE_STYLE_VERSION = 7;
+export const DECK_TEMPLATE_STYLE_VERSION = 8;
 
 export interface DeckToAnkiSettings {
 	defaultDeckType: DeckType;

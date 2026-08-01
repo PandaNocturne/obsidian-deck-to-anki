@@ -207,7 +207,8 @@ export function isReversibleDeckTemplate(
 	return style?.reversible === true;
 }
 
-export const DEFAULT_CARD_CSS = `.card {
+export const DEFAULT_CARD_CSS = `
+.card {
   font-family: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
     system-ui, -apple-system, sans-serif;
   font-size: 18px;
@@ -299,11 +300,19 @@ export const DEFAULT_CARD_CSS = `.card {
 
 .dta-tree,
 .dta-backlink {
-  text-align: center;
-  margin: 0.55rem 0 0;
+  color: #64748b;
   font-size: 0.78em;
   line-height: 1.45;
+}
+
+.dta-tree{
+  margin: 0.5rem 0 0.5rem 0;
+}
+
+.dta-backlink {
+  margin: 0.5rem 0 0;
   color: #64748b;
+  text-align: center;
 }
 
 .dta-deck-sep {
@@ -460,10 +469,13 @@ export const DEFAULT_CARD_CSS = `.card {
 .nightMode .dta-card tr:nth-child(even) td {
   background-color: rgba(30, 41, 59, 0.3);
 }
-
 `;
 
-export const DEFAULT_CARD_FRONT = `<div class="dta-card">
+export const DEFAULT_CARD_FRONT = `
+<div class="dta-card">
+  {{#ob-deck-tree}}
+  <div class="dta-tree">{{ob-deck-tree}}</div>
+  {{/ob-deck-tree}}
   {{#ob-deck-head}}
   <div class="dta-title">{{ob-deck-head}}</div>
   {{/ob-deck-head}}
@@ -473,16 +485,17 @@ export const DEFAULT_CARD_FRONT = `<div class="dta-card">
   {{#ob-deck-tags}}
   <div class="dta-tags">{{ob-deck-tags}}</div>
   {{/ob-deck-tags}}
+</div>
+{{#ob-deck-backlink}}
+<div class="dta-backlink">{{ob-deck-backlink}}</div>
+{{/ob-deck-backlink}}
+`;
+
+export const DEFAULT_CARD_BACK = `
+<div class="dta-card">
   {{#ob-deck-tree}}
   <div class="dta-tree">{{ob-deck-tree}}</div>
   {{/ob-deck-tree}}
-  {{#ob-deck-backlink}}
-  <div class="dta-backlink">{{ob-deck-backlink}}</div>
-  {{/ob-deck-backlink}}
-</div>
-`;
-
-export const DEFAULT_CARD_BACK = `<div class="dta-card">
   {{#ob-deck-head}}
   <div class="dta-title">{{ob-deck-head}}</div>
   {{/ob-deck-head}}
@@ -494,13 +507,10 @@ export const DEFAULT_CARD_BACK = `<div class="dta-card">
   {{#ob-deck-tags}}
   <div class="dta-tags">{{ob-deck-tags}}</div>
   {{/ob-deck-tags}}
-  {{#ob-deck-tree}}
-  <div class="dta-tree">{{ob-deck-tree}}</div>
-  {{/ob-deck-tree}}
-  {{#ob-deck-backlink}}
-  <div class="dta-backlink">{{ob-deck-backlink}}</div>
-  {{/ob-deck-backlink}}
 </div>
+{{#ob-deck-backlink}}
+<div class="dta-backlink">{{ob-deck-backlink}}</div>
+{{/ob-deck-backlink}}
 `;
 
 export function defaultStyleFor(id: DeckTemplateId): DeckTemplateStyle {
