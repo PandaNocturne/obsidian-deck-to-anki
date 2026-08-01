@@ -487,7 +487,7 @@ function renderCard(
 	const nameSlot = row.createSpan({ cls: 'dta-sync-name-slot' });
 	nameSlot.createSpan({
 		cls: 'dta-sync-name',
-		text: card.front,
+		text: (card.navTitle ?? '').trim() || card.front,
 	});
 
 	if (card.deckClass === 'card') {

@@ -280,6 +280,8 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 
 			if (sepLine >= 0) {
 				// Smart ---: body above → front (title optional); below → back.
+				// Title always lives in navTitle / ob-deck-head, not in front
+				// unless includeHeadingInFront is on.
 				const above = lines
 					.slice(bodyStart, sepLine)
 					.join('\n')
@@ -296,7 +298,9 @@ export function buildHeadTree(options: BuildHeadTreeOptions): {
 					idMarker?.lineIndex,
 				);
 			} else {
-				front = heading.text;
+				// No ---: title → head (navTitle); body under heading → back.
+				// Do not put the heading into front.
+				front = '';
 				back = extractBack(
 					lines,
 					bodyStart,

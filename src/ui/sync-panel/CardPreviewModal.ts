@@ -103,6 +103,12 @@ export class CardPreviewModal extends Modal {
 		const host = this.bodyHostEl;
 		host.empty();
 
+		const head = (this.card.navTitle ?? '').trim();
+		if (head) {
+			await this.renderSection(host, '标题', head, token);
+			if (token !== this.renderToken) return;
+		}
+
 		await this.renderSection(host, '正面', this.card.front, token);
 		if (token !== this.renderToken) return;
 

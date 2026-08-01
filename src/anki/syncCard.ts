@@ -148,16 +148,17 @@ function ensureFieldsNonEmptyForAnki(
 	const front = fields[FIELD_FRONT] ?? '';
 	const head = keepHeadEmpty ? '' : (fields[FIELD_HEAD] ?? '');
 	const back = fields[FIELD_BACK] ?? '';
-	const best =
-		(fieldHasContent(front) && front) ||
-		(fieldHasContent(head) && head) ||
-		(fieldHasContent(back) && back) ||
-		(plainFallback.trim()
-			? `<p>${escapeHtmlText(plainFallback.trim())}</p>`
-			: '');
 
-	if (best && !fieldHasContent(fields[FIELD_FRONT])) {
-		fields[FIELD_FRONT] = best;
+	// Never mirror head → front. Head-mode titles stay in ob-deck-head only;
+	// an empty front with a filled head/back is valid (first field is ob-deck-id).
+	const hasAnyContent =
+		fieldHasContent(front) ||
+		fieldHasContent(head) ||
+		fieldHasContent(back);
+
+	if (!hasAnyContent && plainFallback.trim()) {
+		fields[FIELD_FRONT] =
+			`<p>${escapeHtmlText(plainFallback.trim())}</p>`;
 	}
 
 	if (keepHeadEmpty) {
@@ -165,15 +166,15 @@ function ensureFieldsNonEmptyForAnki(
 	}
 
 	// Legacy Basic-style fields (still present when rename failed / mixed models).
-	if (best && allowed.has('Front') && !fieldHasContent(fields.Front)) {
-		fields.Front = fields[FIELD_FRONT] || best;
+	if (
+		allowed.has('Front') &&
+		!fieldHasContent(fields.Front) &&
+		fieldHasContent(fields[FIELD_FRONT])
+	) {
+		fields.Front = fields[FIELD_FRONT] ?? '';
 	}
 	if (allowed.has('Back') && !fieldHasContent(fields.Back)) {
 		fields.Back = fields[FIELD_BACK] || '';
-	}
-
-	if (!best) {
-		return;
 	}
 
 	const referenced = fieldNamesInTemplateHtml(frontTemplateHtml);
@@ -186,16 +187,27 @@ function ensureFieldsNonEmptyForAnki(
 	if (anyReferencedFilled) {
 		return;
 	}
+
+	// Template Front references fields we left empty — last resort only.
+	// Prefer back / plainFallback; never copy head into front.
+	const fallback =
+		(fieldHasContent(fields[FIELD_BACK]) && fields[FIELD_BACK]) ||
+		(plainFallback.trim()
+			? `<p>${escapeHtmlText(plainFallback.trim())}</p>`
+			: '');
+	if (!fallback) {
+		return;
+	}
 	const target =
 		referenced.find((name) => allowed.has(name) || name in fields) ??
 		referenced[0]!;
-	if (target === FIELD_ID || (target === FIELD_HEAD && keepHeadEmpty)) {
+	if (target === FIELD_ID || target === FIELD_HEAD) {
 		if (allowed.has(FIELD_FRONT)) {
-			fields[FIELD_FRONT] = best;
+			fields[FIELD_FRONT] = fallback;
 		}
 		return;
 	}
-	fields[target] = best;
+	fields[target] = fallback;
 }
 
 async function syncNoteTags(
@@ -289,10 +301,12 @@ async function upsertAnkiNote(
 	if (
 		!fieldHasContent(fields[FIELD_FRONT]) &&
 		!fieldHasContent(fields.Front) &&
-		!fieldHasContent(fields[FIELD_HEAD])
+		!fieldHasContent(fields[FIELD_HEAD]) &&
+		!fieldHasContent(fields[FIELD_BACK]) &&
+		!fieldHasContent(fields.Back)
 	) {
 		throw new Error(
-			'卡片正面渲染后为空，Anki 无法创建笔记。请检查正文，或到插件设置对该模板「强制更新」。',
+			'卡片标题/正面/背面渲染后均为空，Anki 无法创建笔记。请检查正文，或到插件设置对该模板「强制更新」。',
 		);
 	}
 	if (!(fields[FIELD_ID] ?? '').trim()) {

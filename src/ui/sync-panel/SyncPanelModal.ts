@@ -1073,7 +1073,7 @@ export class SyncPanelUI {
 			focusNode?.kind === 'deck'
 				? focusNode.name
 				: focusNode?.kind === 'card'
-					? focusNode.front
+					? (focusNode.navTitle ?? '').trim() || focusNode.front
 					: null;
 
 		if (focusChildPath && !focusNode) {
@@ -1347,10 +1347,14 @@ export class SyncPanelUI {
 				return;
 			}
 
+			const cardLabel =
+				node.kind === 'card'
+					? (node.navTitle ?? '').trim() || node.front
+					: '';
 			const label =
 				node.kind === 'deck'
 					? `牌组「${node.name}」`
-					: `卡片「${(node.front || '').slice(0, 32)}」`;
+					: `卡片「${(cardLabel || '').slice(0, 32)}」`;
 			const progress = new ProgressNotice(`${label}：同步中…`);
 			this.statusEl.setText(`${label}：同步中…`);
 			try {
