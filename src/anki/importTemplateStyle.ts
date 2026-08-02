@@ -3,6 +3,7 @@ import {
 	DEFAULT_REVERSE_CARD_BACK,
 	DEFAULT_REVERSE_CARD_FRONT,
 	defaultStyleFor,
+	isBuiltInDeckTemplate,
 	isReversibleDeckTemplate,
 	normalizeDeckCardKind,
 	type DeckTemplateStyle,
@@ -10,6 +11,8 @@ import {
 
 /**
  * Pull Front / Back / CSS (and Card 2 reverse HTML when present) from Anki.
+ * Built-in `ob-deck-basic` is never treated as reversible, even if Anki still
+ * has a leftover Card 2 from older plugin versions.
  */
 export async function importDeckTemplateStyleFromAnki(
 	client: AnkiConnectClient,
@@ -35,14 +38,25 @@ export async function importDeckTemplateStyleFromAnki(
 		(previous?.reverseFront ?? '').trim() || DEFAULT_REVERSE_CARD_FRONT;
 	let reverseBack =
 		(previous?.reverseBack ?? '').trim() || DEFAULT_REVERSE_CARD_BACK;
-	let reversible = isReversibleDeckTemplate(modelName, previous);
 
-	if (names.length >= 2) {
+	const builtinReversible = isBuiltInDeckTemplate(modelName)
+		? isReversibleDeckTemplate(modelName)
+		: null;
+	let reversible =
+		builtinReversible ?? isReversibleDeckTemplate(modelName, previous);
+
+	const shouldImportReverse =
+		builtinReversible === true ||
+		(builtinReversible === null && names.length >= 2);
+
+	if (shouldImportReverse && names.length >= 2) {
 		const second = templates[names[1]!]!;
 		reverseFront = second.Front ?? reverseFront;
 		reverseBack = second.Back ?? reverseBack;
-		reversible = true;
-	} else if (modelName !== 'ob-deck-basic++') {
+		if (builtinReversible === null) {
+			reversible = true;
+		}
+	} else if (builtinReversible === null) {
 		reversible = false;
 	}
 
@@ -55,7 +69,8 @@ export async function importDeckTemplateStyleFromAnki(
 		reverseFront,
 		reverseBack,
 		css,
-		reversible: modelName === 'ob-deck-basic++' ? true : reversible,
+		reversible:
+			builtinReversible !== null ? builtinReversible : reversible,
 		kind: normalizeDeckCardKind(previous?.kind),
 	};
 }

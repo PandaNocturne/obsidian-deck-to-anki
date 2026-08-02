@@ -165,6 +165,31 @@ async function ensureReverseCardTemplate(
 }
 
 /**
+ * Drop leftover Card 2+ when the note type is not reversible.
+ * Older builds always created Card 2 for every model (including basic).
+ */
+async function removeExtraReverseCardTemplates(
+	client: AnkiConnectClient,
+	templateId: DeckTemplateId,
+	style: DeckTemplateStyle,
+): Promise<boolean> {
+	if (isReversibleDeckTemplate(templateId, style)) {
+		return false;
+	}
+	const live = await client.modelTemplates(templateId);
+	const liveNames = Object.keys(live);
+	if (liveNames.length <= 1) {
+		return false;
+	}
+	// Remove from the end so index shifts do not skip names.
+	for (let i = liveNames.length - 1; i >= 1; i--) {
+		const name = liveNames[i]!;
+		await client.modelTemplateRemove(templateId, name);
+	}
+	return true;
+}
+
+/**
  * Ensure the selected ob-deck model exists in Anki.
  * Always migrates/adds ob-deck-* fields when the model already exists.
  * Templates/CSS are applied on first create, or whenever `force` is true.
@@ -198,9 +223,14 @@ export async function ensureDeckTemplateModel(
 		style,
 		force,
 	);
+	const reverseRemoved = await removeExtraReverseCardTemplates(
+		client,
+		templateId,
+		style,
+	);
 
 	if (!force) {
-		return reverseAdded ? 'updated' : 'exists';
+		return reverseAdded || reverseRemoved ? 'updated' : 'exists';
 	}
 
 	// Use live template names from Anki (may not be exactly "Card 1").

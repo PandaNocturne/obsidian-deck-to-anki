@@ -211,8 +211,12 @@ export function isReversibleDeckTemplate(
   id: string,
   style?: DeckTemplateStyle | null,
 ): boolean {
+  // Built-ins are fixed: only basic++ is a flip note type.
   if (id === 'ob-deck-basic++') {
     return true;
+  }
+  if (id === 'ob-deck-basic') {
+    return false;
   }
   return style?.reversible === true;
 }

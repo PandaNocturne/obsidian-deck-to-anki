@@ -1270,14 +1270,20 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 
 		new Setting(body)
 			.setName('是否翻转')
-			.setDesc('开启后使用下方翻转正/反面 HTML 生成 Anki Card 2')
+			.setDesc(
+				isBuiltInDeckTemplate(id)
+					? id === 'ob-deck-basic++'
+						? '内置翻转模板，固定生成 Anki Card 2'
+						: '内置普通问答模板，不会生成 Anki Card 2'
+					: '开启后使用下方翻转正/反面 HTML 生成 Anki Card 2',
+			)
 			.addToggle((toggle) => {
-				const locked = id === 'ob-deck-basic++';
+				const locked = isBuiltInDeckTemplate(id);
 				toggle
 					.setValue(reversible)
 					.setDisabled(locked)
 					.onChange(async (value) => {
-						if (id === 'ob-deck-basic++') {
+						if (isBuiltInDeckTemplate(id)) {
 							return;
 						}
 						const defaults = defaultStyleFor(id);

@@ -146,6 +146,20 @@ export class AnkiConnectClient {
 		});
 	}
 
+	/**
+	 * Remove a card template from an existing model.
+	 * Deletes all cards generated from that template.
+	 */
+	async modelTemplateRemove(
+		modelName: string,
+		templateName: string,
+	): Promise<void> {
+		await this.invoke('modelTemplateRemove', {
+			modelName,
+			templateName,
+		});
+	}
+
 	async updateModelStyling(modelName: string, css: string): Promise<void> {
 		await this.invoke('updateModelStyling', {
 			model: {
