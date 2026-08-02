@@ -1,6 +1,6 @@
 {
 	"name": "deck-to-anki",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Sync Obsidian notes to Anki decks.",
 	"main": "main.js",
 	"type": "module",
