@@ -22,9 +22,26 @@ Deck To Anki 是 Obsidian 中用来快速制作成Anki牌组的插件，通过 [
 
 ### 准备工作
 
-1. Obsidian ≥ 1.0.0，启用 **Deck To Anki**
+### 准备工作
+
+1. 安装并启用 **Deck To Anki** 插件
 2. 安装并启动 [Anki](https://apps.ankiweb.net/) + [AnkiConnect](https://foosoft.net/projects/anki-connect/)（默认 `http://127.0.0.1:8765`）
-3. 打开要制卡的笔记，为其设置 `deckType` 等 Deck 属性（也可在同步面板中配置）
+
+AnkiConnect 配置：
+
+```json
+{
+    "apiKey": null,
+    "apiLogPath": null,
+    "ignoreOriginList": [],
+    "webBindAddress": "127.0.0.1",
+    "webBindPort": 8765,
+    "webCorsOriginList": [
+        "http://localhost",
+        "app://obsidian.md"
+    ]
+}
+```
 
 ### 打开同步面板
 
@@ -73,12 +90,12 @@ Deck To Anki 是 Obsidian 中用来快速制作成Anki牌组的插件，通过 [
 
 ### 解析模式
 
-| 模式     | 说明                                                                | 笔记 ID 写入位置     |
-| -------- | ------------------------------------------------------------------- | -------------------- |
-| **Head** | 指定层级标题为卡片正面，正文为反面；可用单独一行的 `---` 再拆正反面 | `<!--ID: n-->`       |
-| **List** | 顶层列表项为正面，缩进内容为反面（反面会去掉一层缩进）              | 列表行末尾 `^deckID` |
-| **Card** | 去掉 YAML 后，用单独一行的 `---` 分隔正面与反面；整篇笔记一张卡     | YAML `deckID`        |
-| **File** | 父笔记通过 wiki 链接组织子笔记，子笔记可再按 head/list/card 解析    | 视子笔记模式而定     |
+| 模式                   | 说明                                                                 | 笔记 ID 写入位置      |
+| ---------------------- | -------------------------------------------------------------------- | --------------------- |
+| **Head**（默认） | 指定层级标题为卡片正面，正文为反面；可用单独一行的`---` 再拆正反面 | `<!--ID: n-->`      |
+| **List**         | 顶层列表项为正面，缩进内容为反面（反面会去掉一层缩进）               | 列表行末尾`^deckID` |
+| **Card**         | 去掉 YAML 后，用单独一行的`---` 分隔正面与反面；整篇笔记一张卡     | YAML`deckID`        |
+| **File**         | 父笔记通过 wiki 链接组织子笔记，子笔记可再按 head/list/card 解析     | 视子笔记模式而定      |
 
 File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织子笔记，子笔记各自按 head / list / card 解析。注意：**不支持 File 模式嵌套**（子笔记不能再以 File 模式解析），如下图所示：
 
@@ -90,28 +107,16 @@ File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织
 
 ![](assets/0d92183d0a04d3a58290f1239b52b26f.png)
 
-| 字段            | 说明                              |
-| --------------- | --------------------------------- |
+| 字段              | 说明                                      |
+| ----------------- | ----------------------------------------- |
 | `deckType`      | `head` / `list` / `card` / `file` |
-| `deckName`      | 牌组显示名（可选）                |
-| `deckLevel`     | Head：卡片标题层级（1–6）         |
-| `deckStatus`    | `false` 学习中；`true` 归档       |
-| `deckFile`      | File 模式：父笔记索引 `父笔记`    |
-| `deckTemplate`  | Anki 笔记模板 id                  |
-| `deckNumbering` | 是否同步牌组编号到树字段          |
-| `deckID`        | Card 模式：Anki note id           |
-
-### Anki 字段
-
-| 字段             | 说明                                            |
-| ---------------- | ----------------------------------------------- |
-| ob-deck-id       | 笔记身份字段（模型首字段，供 AnkiConnect 使用） |
-| ob-deck-head     | 卡片标题（导航标题）；与正面正文分开存储。      |
-| ob-deck-front    | 卡片正面正文（不含标题时仅正文）。              |
-| ob-deck-back     | 卡片背面内容。                                  |
-| ob-deck-tags     | Obsidian 标签展示；可同步为 Anki 笔记标签。     |
-| ob-deck-tree     | 牌组路径面包屑（如一级》子牌组）。              |
-| ob-deck-backlink | 回链到 Obsidian 当前卡片（标题 /块 /文件）。    |
+| `deckName`      | 牌组显示名（可选）                        |
+| `deckLevel`     | Head：卡片标题层级（1–6）                |
+| `deckStatus`    | `false` 学习中；`true` 归档           |
+| `deckFile`      | File 模式：父笔记索引`父笔记`           |
+| `deckTemplate`  | Anki 笔记模板 id                          |
+| `deckNumbering` | 是否同步牌组编号到树字段                  |
+| `deckID`        | Card 模式：Anki note id                   |
 
 ## 插件设置
 
@@ -144,9 +149,8 @@ File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织
 **设置 → 同步** 主要项：
 
 1. **AnkiConnect URL** — 服务地址
-2. **同步牌组编号** — 写入同步树与 `ob-deck-tree`（可用 YAML `deckNumbering` 覆盖）
-3. **检测** — 打开面板 / 勾选时是否自动对照 Anki，以及同步前是否必须先检测
-4. **图片压缩** — 仅压缩上传到 Anki 的图片，不改库内源文件；可调质量、清空缓存
+2. **同步检测** — 打开面板 / 勾选时是否自动对照 Anki，以及同步前是否必须先检测
+3. **图片压缩** — 仅压缩上传到 Anki 的图片，不改库内源文件；可调质量、清空缓存
 
 ### 模板设置
 
@@ -166,6 +170,21 @@ File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织
 2. **卡片回链** — 写入 `ob-deck-backlink`（Head → 标题，List → 块，Card → 文件）
 3. **牌组树** — 写入 `ob-deck-tree`；可开启各段可点击跳转
 4. **回链协议** — `none` / `oburi` / `aduri`（Advanced URI）
+
+对应 Anki 字段如下：
+
+![1785646815784](assets/README/1785646815784.png)
+
+
+| 字段             | 说明                                            |
+| ---------------- | ----------------------------------------------- |
+| ob-deck-id       | 笔记身份字段（模型首字段，供 AnkiConnect 使用） |
+| ob-deck-head     | 卡片标题（导航标题）；与正面正文分开存储。      |
+| ob-deck-front    | 卡片正面正文（不含标题时仅正文）。              |
+| ob-deck-back     | 卡片背面内容。                                  |
+| ob-deck-tags     | Obsidian 标签展示；可同步为 Anki 笔记标签。     |
+| ob-deck-tree     | 牌组路径面包屑（如一级》子牌组）。              |
+| ob-deck-backlink | 回链到 Obsidian 当前卡片（标题 /块 /文件）。    |
 
 ## 可用命令
 
@@ -225,4 +244,4 @@ npm run lint
 
 ## License
 
-见仓库 `LICENSE`（若有）。
+见仓库 `LICENSE`。
