@@ -573,7 +573,7 @@ export async function syncCardToAnki(
 		/* non-fatal; ensureFieldsNonEmptyForAnki still dual-writes Front/Back */
 	}
 
-	if (syncCard.deckClass === 'card') {
+	if (syncCard.deckClass === 'card' || syncCard.deckClass === 'title') {
 		payload.fields[FIELD_HEAD] = '';
 	}
 	payload.fields[FIELD_ID] = provisionalDeckIdField(syncCard);
@@ -586,7 +586,8 @@ export async function syncCardToAnki(
 		tags: payload.tags,
 		deckTagsEnabled: settings.deckTagsEnabled,
 		plainFallback,
-		keepHeadEmpty: syncCard.deckClass === 'card',
+		keepHeadEmpty:
+			syncCard.deckClass === 'card' || syncCard.deckClass === 'title',
 		deckIdValue: payload.fields[FIELD_ID],
 	});
 
@@ -629,9 +630,10 @@ export async function syncCardToAnki(
 		}
 	}
 
-	// Card → YAML deckID; list → ^noteId on L1 item; head → <!--ID-->.
+	// Card/title → YAML deckID; list → ^noteId on L1 item; head → <!--ID-->.
 	const needsIdWrite =
 		identityCard.deckClass === 'card' ||
+		identityCard.deckClass === 'title' ||
 		upserted.created ||
 		card.noteId !== upserted.noteId ||
 		(identityCard.deckClass === 'list'

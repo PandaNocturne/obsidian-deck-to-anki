@@ -1052,7 +1052,7 @@ export function shouldSkipOnUpdate(
 	card?: Pick<CardNode, 'deckClass' | 'hasYamlDeckId'>,
 ): boolean {
 	if (
-		card?.deckClass === 'card' &&
+		(card?.deckClass === 'card' || card?.deckClass === 'title') &&
 		card.hasYamlDeckId !== true
 	) {
 		return false;

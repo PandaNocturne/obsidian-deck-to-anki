@@ -490,6 +490,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					.addOption('head', 'Head（标题）')
 					.addOption('list', 'List（顶层列表）')
 					.addOption('card', 'Card（分隔符）')
+					.addOption('title', 'Title（文件名）')
 					.setValue(this.plugin.settings.defaultDeckType)
 					.onChange(async (value) => {
 						this.plugin.settings.defaultDeckType = value as DeckType;
@@ -575,7 +576,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		const yamlFields: Array<{ key: string; desc: string }> = [
 			{
 				key: 'deckType',
-				desc: '解析模式：file / head / list / card。',
+				desc: '解析模式：file / head / list / card / title。',
 			},
 			{
 				key: 'deckName',

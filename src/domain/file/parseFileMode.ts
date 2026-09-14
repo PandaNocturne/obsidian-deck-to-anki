@@ -27,6 +27,7 @@ import type {
 } from '../head/types';
 import { buildListTree } from '../list/buildListTree';
 import { buildCardNode } from '../card/buildCardTree';
+import { buildTitleNode } from '../title/buildTitleTree';
 
 const WIKILINK_REGEXP = /(!)?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]/g;
 
@@ -101,7 +102,7 @@ export interface ParseFileModeContext {
 	/** Head ---: include heading in card front for child head notes. */
 	includeHeadingInFront?: boolean;
 	/**
-	 * Session overrides for child notes (path ù??forced deckType).
+	 * Session overrides for child notes (path ÔøΩ??forced deckType).
 	 * Does not write YAML; skips auto-write when present.
 	 */
 	childTypeOverrides?: Map<string, Exclude<DeckType, 'file'>>;
@@ -117,9 +118,9 @@ interface ResolvedChildMode {
 
 /**
  * Resolve child note deckType:
- * - missing ù??auto-write YAML deckType: head
- * - file ù??not allowed for nesting; parse as head (YAML type unchanged)
- * - head / card / list ù??use as-is
+ * - missing ÔøΩ??auto-write YAML deckType: head
+ * - file ÔøΩ??not allowed for nesting; parse as head (YAML type unchanged)
+ * - head / card / list / title ÔøΩ??use as-is
  * Always ensure deckFile: [[parent]] indexes the file-mode parent.
  */
 async function resolveChildDeckMode(
@@ -210,7 +211,7 @@ export async function parseFileMode(
 			filePath,
 		);
 		if (!dest || dest.extension !== 'md') {
-			warnings.push(`ù?ù?ù?ùù?ùù?? ${ref.linkpath}`);
+			warnings.push(`ÔøΩ?ÔøΩ?ÔøΩ?ÔøΩÔøΩ?ÔøΩÔøΩ?? ${ref.linkpath}`);
 			continue;
 		}
 		if (dest.path === filePath) {
@@ -258,39 +259,49 @@ export async function parseFileMode(
 		const flattenSoleH1 = Boolean(soleH1);
 
 		if (resolved.autoSetHead) {
-			warnings.push(`${childName}: ?ù?ùù?ùù??ù??deckType: head / deckFile`);
+			warnings.push(`${childName}: ?ÔøΩ?ÔøΩÔøΩ?ÔøΩÔøΩ??ÔøΩ??deckType: head / deckFile`);
 		}
 		if (resolved.forcedFromFile) {
 			warnings.push(
-				`${childName}: ?ù???ù?ùù?ù file ù?ù?ù??ù??head ?ù?ù`,
+				`${childName}: ?ÔøΩ???ÔøΩ?ÔøΩÔøΩ?ÔøΩ file ÔøΩ?ÔøΩ?ÔøΩ??ÔøΩ??head ?ÔøΩ?ÔøΩ`,
 			);
 		}
 
-		if (resolved.deckType === 'card') {
-			const parsedCard = buildCardNode({
-				filePath: dest.path,
-				content: childContent,
-				deckName: childName,
-				parentDeckPath: root.deckPath,
-				deckBacklinkTrail: [
-					{
-						name: deckName,
-						sourceFilePath: filePath,
-						headingTarget: false,
-					},
-					{
-						name: childName,
-						sourceFilePath: dest.path,
-						headingTarget: false,
-					},
-				],
-			});
+		if (resolved.deckType === 'card' || resolved.deckType === 'title') {
+			const leafTrail = [
+				{
+					name: deckName,
+					sourceFilePath: filePath,
+					headingTarget: false,
+				},
+				{
+					name: childName,
+					sourceFilePath: dest.path,
+					headingTarget: false,
+				},
+			];
+			const parsedLeaf =
+				resolved.deckType === 'title'
+					? buildTitleNode({
+							filePath: dest.path,
+							content: childContent,
+							deckName: childName,
+							parentDeckPath: root.deckPath,
+							deckBacklinkTrail: leafTrail,
+						})
+					: buildCardNode({
+							filePath: dest.path,
+							content: childContent,
+							deckName: childName,
+							parentDeckPath: root.deckPath,
+							deckBacklinkTrail: leafTrail,
+						});
 			warnings.push(
-				...parsedCard.warnings.map((w) => `${childName}: ${w}`),
+				...parsedLeaf.warnings.map((w) => `${childName}: ${w}`),
 			);
-			if (parsedCard.card) {
-				// Card notes are leaves under the file deck ù??no nested deck row.
-				root.children.push(parsedCard.card);
+			if (parsedLeaf.card) {
+				// Card/title notes are leaves under the file deck ‚Äî no nested deck row.
+				root.children.push(parsedLeaf.card);
 			}
 			continue;
 		}

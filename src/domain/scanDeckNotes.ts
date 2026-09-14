@@ -209,8 +209,8 @@ export async function parseVaultDeckForest(
 	};
 
 	for (const item of items) {
-		// Card notes are leaves (no nested deck) in forest views too.
-		if (item.deckType === 'card') {
+		// Card/title notes are leaves (no nested deck) in forest views too.
+		if (item.deckType === 'card' || item.deckType === 'title') {
 			const card = item.root.children.find(
 				(child): child is CardNode => child.kind === 'card',
 			);

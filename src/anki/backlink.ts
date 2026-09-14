@@ -269,7 +269,7 @@ export function cardJumpTarget(card: CardNode): {
 	if (card.deckClass === 'list' && card.blockId) {
 		return { block: card.blockId };
 	}
-	if (card.deckClass === 'card') {
+	if (card.deckClass === 'card' || card.deckClass === 'title') {
 		return {};
 	}
 	const heading = (card.navTitle ?? '').trim();
@@ -507,6 +507,7 @@ export function deckClassJumpHint(deckClass: DeckClass): string {
 		case 'list':
 			return 'block';
 		case 'card':
+		case 'title':
 			return 'file';
 		default:
 			return 'heading';
