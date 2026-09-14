@@ -1,5 +1,10 @@
 import type { AnkiConnectClient } from './AnkiConnectClient';
 import {
+	CODE_HIGHLIGHT_CSS_FILENAME,
+	codeHighlightCssBase64,
+	withCodeHighlightLinks,
+} from './codeHighlightCss';
+import {
 	FIELD_BACK,
 	FIELD_FRONT,
 	FIELD_ID,
@@ -190,9 +195,23 @@ async function removeExtraReverseCardTemplates(
 }
 
 /**
+ * Upload Prism/Obsidian token stylesheet into Anki collection.media.
+ * Safe to call on every sync — overwrites with the bundled CSS.
+ */
+export async function ensureCodeHighlightMedia(
+	client: AnkiConnectClient,
+): Promise<void> {
+	await client.storeMediaFile({
+		filename: CODE_HIGHLIGHT_CSS_FILENAME,
+		data: codeHighlightCssBase64(),
+	});
+}
+
+/**
  * Ensure the selected ob-deck model exists in Anki.
  * Always migrates/adds ob-deck-* fields when the model already exists.
  * Templates/CSS are applied on first create, or whenever `force` is true.
+ * Also uploads `_dta-code-highlight.css` and injects `<link>` into card HTML.
  */
 export async function ensureDeckTemplateModel(
 	client: AnkiConnectClient,
@@ -200,15 +219,17 @@ export async function ensureDeckTemplateModel(
 	style: DeckTemplateStyle,
 	force = false,
 ): Promise<'created' | 'updated' | 'exists'> {
+	await ensureCodeHighlightMedia(client);
+	const linkedStyle = withCodeHighlightLinks(style);
 	const models = await client.modelNames();
 	const exists = models.includes(templateId);
-	const cardTemplates = buildCardTemplates(templateId, style);
+	const cardTemplates = buildCardTemplates(templateId, linkedStyle);
 
 	if (!exists) {
 		await client.createModel({
 			modelName: templateId,
 			inOrderFields: [...MODEL_FIELDS],
-			css: style.css,
+			css: linkedStyle.css,
 			cardTemplates,
 		});
 		return 'created';
@@ -220,13 +241,13 @@ export async function ensureDeckTemplateModel(
 	const reverseAdded = await ensureReverseCardTemplate(
 		client,
 		templateId,
-		style,
+		linkedStyle,
 		force,
 	);
 	const reverseRemoved = await removeExtraReverseCardTemplates(
 		client,
 		templateId,
-		style,
+		linkedStyle,
 	);
 
 	if (!force) {
@@ -237,17 +258,23 @@ export async function ensureDeckTemplateModel(
 	const live = await client.modelTemplates(templateId);
 	const liveNames = Object.keys(live);
 	const templatesMap: Record<string, { Front: string; Back: string }> = {};
-	const reverse = resolveReverseCardSides(style);
+	const reverse = resolveReverseCardSides(linkedStyle);
 
 	if (liveNames.length === 0) {
-		templatesMap['Card 1'] = { Front: style.front, Back: style.back };
-		if (isReversibleDeckTemplate(templateId, style)) {
+		templatesMap['Card 1'] = {
+			Front: linkedStyle.front,
+			Back: linkedStyle.back,
+		};
+		if (isReversibleDeckTemplate(templateId, linkedStyle)) {
 			templatesMap['Card 2'] = reverse;
 		}
 	} else {
 		const primary = liveNames[0]!;
-		templatesMap[primary] = { Front: style.front, Back: style.back };
-		if (isReversibleDeckTemplate(templateId, style)) {
+		templatesMap[primary] = {
+			Front: linkedStyle.front,
+			Back: linkedStyle.back,
+		};
+		if (isReversibleDeckTemplate(templateId, linkedStyle)) {
 			const second = liveNames[1] ?? 'Card 2';
 			templatesMap[second] = reverse;
 		}
@@ -262,6 +289,6 @@ export async function ensureDeckTemplateModel(
 			throw error;
 		}
 	}
-	await client.updateModelStyling(templateId, style.css);
+	await client.updateModelStyling(templateId, linkedStyle.css);
 	return 'updated';
 }

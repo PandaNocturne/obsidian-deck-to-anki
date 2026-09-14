@@ -1,6 +1,11 @@
 import { App, Component, MarkdownRenderer } from 'obsidian';
 import { extractMathForAnki, injectAnkiMath } from './mathForAnki';
 import {
+	extractCodeForAnki,
+	highlightCodeInHtml,
+	injectAnkiCode,
+} from './prismHighlight';
+import {
 	dedupeMediaAssets,
 	preprocessMarkdownMedia,
 	processRenderedHtmlMedia,
@@ -113,14 +118,20 @@ export async function renderFieldWithMedia(
 		sourcePath,
 		mediaOptions,
 	);
+	// Extract fenced code before Obsidian render — language comes from the
+	// fence info string, not Obsidian's async code-block DOM classes.
+	const withCode = extractCodeForAnki(pre.markdown);
 	// Extract math before Obsidian render so Anki gets \( \) / \[ \] (not Obsidian MathJax DOM).
-	const prepared = extractMathForAnki(pre.markdown);
+	const prepared = extractMathForAnki(withCode.markdown);
 	const rawHtml = await renderMarkdownToHtml(
 		app,
 		prepared.markdown,
 		sourcePath,
 	);
-	let withMath = injectAnkiMath(rawHtml, prepared.slots);
+	const withCodeHtml = injectAnkiCode(rawHtml, withCode.slots);
+	// Fallback for any pre/code Obsidian still emitted (non-fence paths).
+	const highlightedHtml = highlightCodeInHtml(withCodeHtml);
+	let withMath = injectAnkiMath(highlightedHtml, prepared.slots);
 	// Obsidian can yield empty HTML for broken math / odd headings; keep a
 	// plain-text fallback so Anki never gets a fully empty note field.
 	if (isVisuallyEmptyHtml(withMath) && text.trim()) {

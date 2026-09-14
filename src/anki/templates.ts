@@ -1,3 +1,5 @@
+import { CODE_HIGHLIGHT_STYLESHEET_LINK } from './codeHighlightCss';
+
 /** Anki note type id (built-in or user-defined). */
 export type DeckTemplateId = string;
 
@@ -365,18 +367,41 @@ export const DEFAULT_CARD_CSS = `
 }
 
 .dta-card pre,
+.dta-card pre.dta-code,
 .dta-card code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.9em;
 }
 
-.dta-card pre {
+.dta-card :not(pre) > code {
+  padding: 0.12em 0.35em;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.dta-card pre,
+.dta-card pre.dta-code {
   text-align: left;
   overflow-x: auto;
   padding: 0.75rem 0.9rem;
   border-radius: 10px;
   background: #f1f5f9;
+  color: #0f172a;
+  tab-size: 4;
 }
+
+.dta-card pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  white-space: inherit;
+  word-break: normal;
+}
+
+/* Token colors live in collection.media/_dta-code-highlight.css (linked from templates). */
 
 .nightMode .card {
   color: #e2e8f0;
@@ -434,8 +459,15 @@ export const DEFAULT_CARD_CSS = `
   );
 }
 
-.nightMode .dta-card pre {
+.nightMode .dta-card :not(pre) > code {
   background: #1e293b;
+  color: #e2e8f0;
+}
+
+.nightMode .dta-card pre,
+.nightMode .dta-card pre.dta-code {
+  background: #1e293b;
+  color: #e2e8f0;
 }
 
 .dta-card table {
@@ -486,6 +518,7 @@ export const DEFAULT_CARD_CSS = `
 `;
 
 export const DEFAULT_CARD_FRONT = `
+${CODE_HIGHLIGHT_STYLESHEET_LINK}
 <div class="dta-card">
   {{#ob-deck-tree}}
   <div class="dta-tree">{{ob-deck-tree}}</div>
@@ -506,6 +539,7 @@ export const DEFAULT_CARD_FRONT = `
 `;
 
 export const DEFAULT_CARD_BACK = `
+${CODE_HIGHLIGHT_STYLESHEET_LINK}
 <div class="dta-card">
   {{#ob-deck-tree}}
   <div class="dta-tree">{{ob-deck-tree}}</div>
@@ -532,6 +566,7 @@ export const DEFAULT_CARD_BACK = `
  * Edit freely in settings — do not rely on auto field-swap.
  */
 export const DEFAULT_REVERSE_CARD_FRONT = `
+${CODE_HIGHLIGHT_STYLESHEET_LINK}
 <div class="dta-card">
   {{#ob-deck-tree}}
   <div class="dta-tree">{{ob-deck-tree}}</div>
@@ -552,6 +587,7 @@ export const DEFAULT_REVERSE_CARD_FRONT = `
  * Reverse Card 2 Back: prompt reminder + original question (head / front).
  */
 export const DEFAULT_REVERSE_CARD_BACK = `
+${CODE_HIGHLIGHT_STYLESHEET_LINK}
 <div class="dta-card">
   {{#ob-deck-tree}}
   <div class="dta-tree">{{ob-deck-tree}}</div>
