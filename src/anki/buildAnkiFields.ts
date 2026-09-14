@@ -91,8 +91,8 @@ export function splitCardHeadAndFront(card: CardNode): {
 	const head = (card.navTitle ?? '').trim();
 	let front = card.front.trim();
 
-	// Card / list without a heading title: front only.
-	if (!head || card.deckClass === 'card' || card.deckClass === 'list') {
+	// Card / title / list without a heading title: front only.
+	if (!head || card.deckClass === 'card' || card.deckClass === 'title' || card.deckClass === 'list') {
 		return { headMarkdown: '', frontMarkdown: front || head };
 	}
 

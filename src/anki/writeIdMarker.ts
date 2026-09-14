@@ -6,6 +6,7 @@ import {
 } from '../domain/head/idMarker';
 import { upsertDeckIdYaml } from '../domain/head/frontmatter';
 import type { CardNode } from '../domain/head/types';
+import { isFileScopedCardMode } from '../domain/head/types';
 import { resolveSourceFile } from './backlink';
 
 export interface PendingIdMarkerWrite {
@@ -41,8 +42,14 @@ function stripLegacyIdMarkersFromBody(content: string): string {
 	return `${prefix}${cleaned}`;
 }
 
-function applyCardModeDeckId(content: string, noteId: number): string {
-	return stripLegacyIdMarkersFromBody(upsertDeckIdYaml(content, noteId));
+function applyCardModeDeckId(
+	content: string,
+	noteId: number,
+	deckType: 'card' | 'title' = 'card',
+): string {
+	return stripLegacyIdMarkersFromBody(
+		upsertDeckIdYaml(content, noteId, deckType),
+	);
 }
 
 /**
@@ -123,7 +130,7 @@ export function applyListBlockIdToLines(
 
 /**
  * Persist Anki note id for a card:
- * - card mode → YAML `deckID` (and strip legacy bottom `<!--ID-->`)
+ * - card/title mode → YAML `deckID` (and strip legacy bottom `<!--ID-->`)
  * - list mode → `^noteId` on the first-level list item
  * - head mode → `<!--ID: n-->` near the card block
  */
@@ -134,8 +141,9 @@ export async function writeCardIdMarker(
 	noteId: number,
 ): Promise<void> {
 	const content = await app.vault.read(file);
-	if (card.deckClass === 'card') {
-		const next = applyCardModeDeckId(content, noteId);
+	if (isFileScopedCardMode(card.deckClass)) {
+		const deckType = card.deckClass === 'title' ? 'title' : 'card';
+		const next = applyCardModeDeckId(content, noteId, deckType);
 		if (next !== content) {
 			await app.vault.modify(file, next);
 		}
@@ -179,16 +187,21 @@ export async function writePendingIdMarkers(
 			continue;
 		}
 		const content = await app.vault.read(file);
-		const cardMode = items.filter((i) => i.card.deckClass === 'card');
+		const cardMode = items.filter((i) =>
+			isFileScopedCardMode(i.card.deckClass),
+		);
 		const listMode = items.filter((i) => i.card.deckClass === 'list');
 		const headMode = items.filter(
-			(i) => i.card.deckClass !== 'card' && i.card.deckClass !== 'list',
+			(i) =>
+				!isFileScopedCardMode(i.card.deckClass) &&
+				i.card.deckClass !== 'list',
 		);
 
 		let next = content;
-		// Card-mode: one file = one card → YAML deckID.
-		for (const { noteId } of cardMode) {
-			next = applyCardModeDeckId(next, noteId);
+		// Card/title mode: one file = one card → YAML deckID.
+		for (const { card, noteId } of cardMode) {
+			const deckType = card.deckClass === 'title' ? 'title' : 'card';
+			next = applyCardModeDeckId(next, noteId, deckType);
 		}
 
 		if (listMode.length > 0 || headMode.length > 0) {

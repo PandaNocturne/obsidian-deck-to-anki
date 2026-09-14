@@ -2,7 +2,7 @@ import type { DeckTemplateId } from '../../anki/templates';
 import type { DeckType } from './types';
 
 const FRONTMATTER_REGEXP = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/;
-const DECK_TYPE_VALUES: DeckType[] = ['head', 'card', 'file', 'list'];
+const DECK_TYPE_VALUES: DeckType[] = ['head', 'card', 'file', 'list', 'title'];
 
 /** All YAML keys managed by this plugin. */
 const ALL_DECK_YAML_KEYS = new Set([
@@ -35,7 +35,7 @@ export interface FrontmatterMeta {
 	deckTemplate?: DeckTemplateId;
 	/** Sync deck sibling indexes into Anki front/tree. */
 	deckNumbering?: boolean;
-	/** Anki note id for card-mode (one file = one card). */
+	/** Anki note id for card/title-mode (one file = one card). */
 	deckID?: number;
 	warnings: string[];
 }
@@ -339,24 +339,29 @@ export function upsertYamlProperty(
 }
 
 /**
- * Insert or update card-mode Anki note id as YAML `deckID`.
- * Also ensures `deckType: card` so reload still parses as card mode
- * (important when the note previously had no YAML / only a session override).
+ * Insert or update card/title-mode Anki note id as YAML `deckID`.
+ * Keeps existing `title` deckType; otherwise ensures `deckType: card`.
  * Returns the original string when YAML already matches (no line-ending churn).
  */
-export function upsertDeckIdYaml(content: string, noteId: number): string {
+export function upsertDeckIdYaml(
+	content: string,
+	noteId: number,
+	preferredType?: 'card' | 'title',
+): string {
 	const id = Math.trunc(noteId);
 	if (!Number.isFinite(id) || id <= 0) {
 		return content;
 	}
 	const meta = parseFrontmatter(content);
-	if (meta.deckID === id && meta.deckType === 'card') {
+	const deckType: 'card' | 'title' =
+		preferredType ?? (meta.deckType === 'title' ? 'title' : 'card');
+	if (meta.deckID === id && meta.deckType === deckType) {
 		return content;
 	}
 	// Canonical key is deckID; drop legacy deckId if present.
 	return applyFrontmatterUpdates(
 		content,
-		{ deckID: String(id), deckType: 'card' },
+		{ deckID: String(id), deckType },
 		new Set(['deckId']),
 	);
 }

@@ -1,7 +1,17 @@
-export type DeckType = 'head' | 'card' | 'file' | 'list';
+export type DeckType = 'head' | 'card' | 'file' | 'list' | 'title';
 
 /** How a card was parsed (drives tree icon). Not the same as note-level file mode. */
-export type DeckClass = 'head' | 'list' | 'card';
+export type DeckClass = 'head' | 'list' | 'card' | 'title';
+
+/**
+ * One-file modes: Anki id in YAML `deckID`, empty ob-deck-head,
+ * sync panel skips synthetic root.
+ */
+export function isFileScopedCardMode(
+	value: DeckType | DeckClass | undefined | null,
+): boolean {
+	return value === 'card' || value === 'title';
+}
 
 export type SyncPanelNodeKind = 'deck' | 'card' | 'deleted-anki';
 
@@ -44,7 +54,7 @@ export interface CardNode {
 	lineStart: number;
 	lineEnd: number;
 	deckPath: string;
-	/** Parse class for icon: head / list / card. */
+	/** Parse class for icon: head / list / card / title. */
 	deckClass: DeckClass;
 	/**
 	 * Heading text for navigation (head mode). When front omits the title

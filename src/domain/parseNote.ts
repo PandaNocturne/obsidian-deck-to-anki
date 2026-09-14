@@ -5,6 +5,7 @@ import { parseFrontmatter } from './head/frontmatter';
 import { parseHeadFile } from './head/parseHeadFile';
 import type { DeckType, ParsedHeadFile } from './head/types';
 import { parseListFile } from './list/parseListFile';
+import { parseTitleFile } from './title/parseTitleFile';
 
 export interface ParseNoteOptions {
 	/** Forced type (session override). Otherwise YAML / fallback. */
@@ -65,6 +66,13 @@ export async function parseNoteFile(
 	if (deckType === 'card') {
 		return parseCardFile(file.path, content, {
 			deckType: 'card',
+			deckLevel,
+		});
+	}
+
+	if (deckType === 'title') {
+		return parseTitleFile(file.path, content, {
+			deckType: 'title',
 			deckLevel,
 		});
 	}

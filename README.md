@@ -11,7 +11,7 @@ Deck To Anki 是 Obsidian 中用来快速制作成Anki牌组的插件，通过 [
 ### 功能一览
 
 - **笔记即卡片**：在 Obsidian 中直接写笔记即可生成问答卡，无需额外制卡工具
-- **四种解析模式**：`head` / `list` / `card` / `file`，适配标题树、列表、单卡与按章节拆分
+- **五种解析模式**：`head` / `list` / `card` / `title` / `file`，适配标题树、列表、单卡、文件名正面与按章节拆分
 - **可翻转模板**：内置 `ob-deck-basic++`，支持正反面互换复习
 - **富内容同步**：图片、公式、表格、代码块、标签均可进入 Anki
 - **Wiki 链接与嵌入**：支持 `[[笔记]]`、`![[图片]]` 等链接解析
@@ -95,9 +95,10 @@ AnkiConnect 配置：
 | **Head**（默认） | 指定层级标题为卡片正面，正文为反面；可用单独一行的`---` 再拆正反面 | `<!--ID: n-->`      |
 | **List**         | 顶层列表项为正面，缩进内容为反面（反面会去掉一层缩进）               | 列表行末尾`^deckID` |
 | **Card**         | 去掉 YAML 后，用单独一行的`---` 分隔正面与反面；整篇笔记一张卡     | YAML`deckID`        |
-| **File**         | 父笔记通过 wiki 链接组织子笔记，子笔记可再按 head/list/card 解析     | 视子笔记模式而定      |
+| **Title**        | 文件名为正面，去除 YAML 后的正文为反面；整篇笔记一张卡               | YAML`deckID`        |
+| **File**         | 父笔记通过 wiki 链接组织子笔记，子笔记可再按 head/list/card/title 解析 | 视子笔记模式而定    |
 
-File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织子笔记，子笔记各自按 head / list / card 解析。注意：**不支持 File 模式嵌套**（子笔记不能再以 File 模式解析），如下图所示：
+File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织子笔记，子笔记各自按 head / list / card / title 解析。注意：**不支持 File 模式嵌套**（子笔记不能再以 File 模式解析），如下图所示：
 
 ![](assets/41bd68e9bbfe7884e529f5331c248b66.png)
 
@@ -109,14 +110,14 @@ File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织
 
 | 字段              | 说明                                      |
 | ----------------- | ----------------------------------------- |
-| `deckType`      | `head` / `list` / `card` / `file` |
+| `deckType`      | `head` / `list` / `card` / `title` / `file` |
 | `deckName`      | 牌组显示名（可选）                        |
 | `deckLevel`     | Head：卡片标题层级（1–6）                |
 | `deckStatus`    | `false` 学习中；`true` 归档           |
 | `deckFile`      | File 模式：父笔记索引`父笔记`           |
 | `deckTemplate`  | Anki 笔记模板 id                          |
 | `deckNumbering` | 是否同步牌组编号到树字段                  |
-| `deckID`        | Card 模式：Anki note id                   |
+| `deckID`        | Card / Title 模式：Anki note id           |
 
 ## 插件设置
 
@@ -131,7 +132,7 @@ File 模式主要用于按章节拆分制卡：父笔记通过 wiki 链接组织
 
 **设置 → 常规** 主要项（单笔记 YAML 可覆盖）：
 
-1. **默认牌组模式** — `head` / `list` / `card` / `file`（默认 Head）
+1. **默认牌组模式** — `head` / `list` / `card` / `title` / `file`（默认 Head）
 2. **默认标题层级** — Head 模式无 `deckLevel` 时使用（默认 H4）
 3. **解析 Wiki 链接** — 是否把 `[[链接]]` 转为可点击回链（不影响 `![[媒体]]`）
 4. **Deck View 默认视图** — 源码 / 阅读

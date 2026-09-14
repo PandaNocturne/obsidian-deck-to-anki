@@ -125,13 +125,15 @@ function resolveDeckLeadIcon(
 	return collapsed ? 'plus-circle' : 'minus-circle';
 }
 
-/** Card icons follow deckClass: head / list / card. */
+/** Card icons follow deckClass: head / list / card / title. */
 function resolveCardIcon(deckClass: DeckClass): string {
 	switch (deckClass) {
 		case 'list':
 			return 'list';
 		case 'card':
 			return 'sticky-note';
+		case 'title':
+			return 'file-text';
 		case 'head':
 		default:
 			return 'heading';
@@ -490,11 +492,11 @@ function renderCard(
 		text: (card.navTitle ?? '').trim() || card.front,
 	});
 
-	if (card.deckClass === 'card') {
+	if (card.deckClass === 'card' || card.deckClass === 'title') {
 		row.createSpan({
 			cls: 'dta-sync-type-badge',
-			text: 'card',
-			attr: { title: 'deckClass: card' },
+			text: card.deckClass,
+			attr: { title: `deckClass: ${card.deckClass}` },
 		});
 	}
 
@@ -557,7 +559,10 @@ function renderCard(
 		});
 	}
 
-	if (card.deckClass === 'card' && handlers.onCardSettings) {
+	if (
+		(card.deckClass === 'card' || card.deckClass === 'title') &&
+		handlers.onCardSettings
+	) {
 		const settingsBtn = row.createEl('button', {
 			cls: 'dta-sync-action clickable-icon',
 			attr: {

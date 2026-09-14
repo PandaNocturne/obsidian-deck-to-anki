@@ -82,11 +82,17 @@ tags:
 
 整篇笔记一张卡：去掉 YAML 后，用单独一行的 `---` 分成正面 / 背面。ID 在 YAML：`deckID`。
 
+### Title 模式
+
+`deckType: title`
+
+整篇笔记一张卡：文件名（去掉 `.md` 与日期前缀）为正面，去除 YAML 后的正文为背面。ID 在 YAML：`deckID`。
+
 ### File 模式
 
 `deckType: file`
 
-父笔记用 wiki 链接组织子笔记；子笔记再按 head / list / card 解析，并用 `deckFile` 指回父笔记。
+父笔记用 wiki 链接组织子笔记；子笔记再按 head / list / card / title 解析，并用 `deckFile` 指回父笔记。
 
 ## 同步面板与状态
 

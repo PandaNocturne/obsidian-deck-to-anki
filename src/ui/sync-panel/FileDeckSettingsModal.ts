@@ -36,7 +36,13 @@ export interface FileDeckSettingsResult {
 	persisted: boolean;
 }
 
-const DEFAULT_DECK_TYPES: DeckType[] = ['file', 'head', 'list', 'card'];
+const DEFAULT_DECK_TYPES: DeckType[] = [
+	'file',
+	'head',
+	'list',
+	'card',
+	'title',
+];
 
 const DECK_TYPE_LABELS: Record<DeckSettingsType, string> = {
 	none: 'None',
@@ -44,6 +50,7 @@ const DECK_TYPE_LABELS: Record<DeckSettingsType, string> = {
 	card: 'Card',
 	file: 'File',
 	list: 'List',
+	title: 'Title',
 };
 
 export class FileDeckSettingsModal extends Modal {

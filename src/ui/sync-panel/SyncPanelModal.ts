@@ -109,7 +109,10 @@ function findChildNoteNode(
 		if (child.sourceFilePath !== childFilePath) {
 			continue;
 		}
-		if (child.kind === 'card' && child.deckClass === 'card') {
+		if (
+			child.kind === 'card' &&
+			(child.deckClass === 'card' || child.deckClass === 'title')
+		) {
 			return child;
 		}
 		if (child.kind === 'deck' && child.deckType) {
@@ -121,7 +124,7 @@ function findChildNoteNode(
 			if (child.kind === 'card') {
 				if (
 					child.sourceFilePath === childFilePath &&
-					child.deckClass === 'card'
+					(child.deckClass === 'card' || child.deckClass === 'title')
 				) {
 					return child;
 				}
@@ -1211,9 +1214,15 @@ export class SyncPanelUI {
 				this.parsed?.deckType ??
 				this.state.parseType ??
 				('head' as DeckType),
-			showRootMeta: !isForest && this.parsed?.deckType !== 'card',
-			// Forest + standalone card: no synthetic / nested deck chrome.
-			skipRootRow: isForest || this.parsed?.deckType === 'card',
+			showRootMeta:
+				!isForest &&
+				this.parsed?.deckType !== 'card' &&
+				this.parsed?.deckType !== 'title',
+			// Forest + standalone card/title: no synthetic / nested deck chrome.
+			skipRootRow:
+				isForest ||
+				this.parsed?.deckType === 'card' ||
+				this.parsed?.deckType === 'title',
 			busy: this.busy !== null,
 			busyNodeId: this.busyNodeId,
 			showDeckNumbers: numbering.deckNumbering,
@@ -1252,7 +1261,9 @@ export class SyncPanelUI {
 							? '未识别到一级列表项。标题用于分组；- / * / 1. 一级列表为正面（同步后写 ^AnkiID），缩进内容为反面（解析时去掉一层缩进）。'
 							: this.parsed?.deckType === 'card'
 								? '未识别到卡片。去除 YAML 后，用单独一行的 --- 分隔正面与反面。'
-								: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
+								: this.parsed?.deckType === 'title'
+									? '未识别到卡片。Title 模式：文件名为正面，去除 YAML 后的正文为反面。'
+									: '未识别到牌组或卡片。点根牌组设置调整 deckLevel。',
 			});
 			return;
 		}
@@ -1480,8 +1491,8 @@ export class SyncPanelUI {
 			return;
 		}
 
-		// Card mode: one file one card — open the note (front is not a heading).
-		if (card.deckClass === 'card') {
+		// Card/title mode: one file one card — open the note (front is not a heading).
+		if (card.deckClass === 'card' || card.deckClass === 'title') {
 			await this.app.workspace.openLinkText(filePath, '', false);
 			return;
 		}
@@ -1526,11 +1537,12 @@ export class SyncPanelUI {
 		);
 	}
 
-	/** Card-mode note leaf → YAML settings (no nested deck row). */
+	/** Card/title-mode note leaf → YAML settings (no nested deck row). */
 	private async openCardNoteSettings(card: CardNode): Promise<void> {
 		if (
 			this.state.tab === 'current' &&
-			this.parsed?.deckType === 'card' &&
+			(this.parsed?.deckType === 'card' ||
+				this.parsed?.deckType === 'title') &&
 			card.sourceFilePath === this.parsed.filePath
 		) {
 			await this.openDeckSettings(this.parsed.root);
@@ -1713,7 +1725,7 @@ export class SyncPanelUI {
 			},
 			allowFileType
 				? undefined
-				: { allowedDeckTypes: ['head', 'list', 'card'] },
+				: { allowedDeckTypes: ['head', 'list', 'card', 'title'] },
 		);
 	}
 
