@@ -2,7 +2,7 @@
 	"id": "deck-to-anki",
 	"name": "Deck To Anki",
 	"version": "1.0.4",
-	"minAppVersion": "1.0.0",
+	"minAppVersion": "1.7.2",
 	"description": "Sync decks notes to Anki.",
 	"author": "PandaNocturne",
 	"authorUrl": "https://github.com/PandaNocturne",

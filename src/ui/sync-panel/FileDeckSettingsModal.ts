@@ -195,7 +195,7 @@ export class FileDeckSettingsModal extends Modal {
 					dropdown
 						.setValue(this.draft.deckTemplate)
 						.onChange((value) => {
-							this.draft.deckTemplate = value as DeckTemplateId;
+							this.draft.deckTemplate = value;
 						});
 				});
 

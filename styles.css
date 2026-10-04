@@ -980,20 +980,29 @@ if you want to view the source, please visit the github repository of this plugi
   animation: dta-sync-progress-slide 1.15s ease-in-out infinite;
 }
 /* Keep icon spin; never show a top edge progress strip on buttons. */
+button.dta-sync-toolbar-btn.is-loading,
+button.dta-sync-action.is-loading,
+button.dta-sync-footer-btn.is-loading,
 .dta-sync-toolbar-btn.is-loading,
 .dta-sync-action.is-loading,
 .dta-sync-footer-btn.is-loading {
   position: relative;
   overflow: hidden;
 }
+button.dta-sync-toolbar-btn.is-loading::before,
+button.dta-sync-action.is-loading::before,
+button.dta-sync-footer-btn.is-loading::before,
 .dta-sync-toolbar-btn.is-loading::before,
 .dta-sync-action.is-loading::before,
 .dta-sync-footer-btn.is-loading::before,
+button.dta-sync-toolbar-btn.is-loading::after,
+button.dta-sync-action.is-loading::after,
+button.dta-sync-footer-btn.is-loading::after,
 .dta-sync-toolbar-btn.is-loading::after,
 .dta-sync-action.is-loading::after,
 .dta-sync-footer-btn.is-loading::after {
-  content: none !important;
-  display: none !important;
+  content: none;
+  display: none;
 }
 .dta-sync-footer-btn {
   padding: 0.58rem 0.75rem;

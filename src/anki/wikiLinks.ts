@@ -4,6 +4,11 @@
  * When on: convert Obsidian internal links to `obsidian://open` (oburi).
  */
 
+import {
+	parseHtmlContainer,
+	serializeHtmlContainer,
+} from './htmlDom';
+
 /** Non-embed wiki links: [[target]] / [[target|alias]] (not ![[embed]]). */
 const WIKI_LINK_REGEXP = /(^|[^!])\[\[([^\]\n]+?)\]\]/g;
 
@@ -79,11 +84,10 @@ export function processWikiLinksInHtml(
 	if (!html.trim()) {
 		return html;
 	}
-	const host = document.createElement('div');
-	host.innerHTML = html;
+	const host = parseHtmlContainer(html);
 	const links = Array.from(
 		host.querySelectorAll('a.internal-link, a[data-href]'),
-	) as HTMLAnchorElement[];
+	).filter((el): el is HTMLAnchorElement => el.instanceOf(HTMLAnchorElement));
 
 	for (const link of links) {
 		const isInternal =
@@ -125,5 +129,5 @@ export function processWikiLinksInHtml(
 		link.classList.add('dta-wiki-link');
 	}
 
-	return host.innerHTML;
+	return serializeHtmlContainer(host);
 }

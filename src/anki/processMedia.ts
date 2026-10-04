@@ -4,6 +4,10 @@ import {
 	isCompressibleImageExt,
 } from './compressImage';
 import {
+	parseHtmlContainer,
+	serializeHtmlContainer,
+} from './htmlDom';
+import {
 	hashFileContent,
 	MediaCompressCache,
 } from './mediaCompressCache';
@@ -364,8 +368,7 @@ export async function processRenderedHtmlMedia(
 		return { html, assets: [] };
 	}
 
-	const host = document.createElement('div');
-	host.innerHTML = html;
+	const host = parseHtmlContainer(html);
 	const assets: MediaAsset[] = [];
 	const seen = new Set<string>();
 
@@ -432,7 +435,7 @@ export async function processRenderedHtmlMedia(
 		fileName: string,
 		alt: string,
 	): HTMLImageElement => {
-		const img = document.createElement('img');
+		const img = createEl('img');
 		img.setAttribute('src', fileName);
 		if (alt) {
 			img.setAttribute('alt', alt);
@@ -548,7 +551,7 @@ export async function processRenderedHtmlMedia(
 		el.replaceWith(document.createTextNode(`[sound:${asset.fileName}]`));
 	}
 
-	return { html: host.innerHTML, assets };
+	return { html: serializeHtmlContainer(host), assets };
 }
 
 export function dedupeMediaAssets(assets: MediaAsset[]): MediaAsset[] {

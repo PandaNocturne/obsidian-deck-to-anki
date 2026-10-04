@@ -6,6 +6,11 @@
  */
 
 import { Prism } from './prismSetup';
+import {
+	parseHtmlContainer,
+	replaceChildrenWithHtml,
+	serializeHtmlContainer,
+} from './htmlDom';
 
 // Language components (order matters for Prism `require` deps).
 import 'prismjs/components/prism-markup.js';
@@ -230,8 +235,7 @@ export function highlightCodeInHtml(html: string): string {
 		return html;
 	}
 
-	const host = document.createElement('div');
-	host.innerHTML = html;
+	const host = parseHtmlContainer(html);
 
 	host.querySelectorAll('pre code').forEach((codeEl) => {
 		// Already Prism-tokenized from injectAnkiCode.
@@ -251,10 +255,9 @@ export function highlightCodeInHtml(html: string): string {
 
 		const source = codeEl.textContent ?? '';
 		try {
-			codeEl.innerHTML = Prism.highlight(
-				source,
-				resolved.grammar,
-				resolved.id,
+			replaceChildrenWithHtml(
+				codeEl,
+				Prism.highlight(source, resolved.grammar, resolved.id),
 			);
 		} catch (error) {
 			console.warn(
@@ -275,5 +278,5 @@ export function highlightCodeInHtml(html: string): string {
 		pre?.classList.add('dta-code');
 	});
 
-	return host.innerHTML;
+	return serializeHtmlContainer(host);
 }

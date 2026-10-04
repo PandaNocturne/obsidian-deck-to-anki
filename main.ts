@@ -37,8 +37,8 @@ export default class DeckToAnkiPlugin extends Plugin {
 		this.addSettingTab(new DeckToAnkiSettingTab(this.app, this));
 	}
 
-	async onunload() {
-		await this.mediaCompressCache?.saveNow();
+	onunload(): void {
+		void this.mediaCompressCache?.saveNow();
 	}
 
 	async loadSettings() {

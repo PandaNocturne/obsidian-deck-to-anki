@@ -642,6 +642,9 @@
 }
 
 /* Keep icon spin; never show a top edge progress strip on buttons. */
+button.dta-sync-toolbar-btn.is-loading,
+button.dta-sync-action.is-loading,
+button.dta-sync-footer-btn.is-loading,
 .dta-sync-toolbar-btn.is-loading,
 .dta-sync-action.is-loading,
 .dta-sync-footer-btn.is-loading {
@@ -650,8 +653,8 @@
 
 	&::before,
 	&::after {
-		content: none !important;
-		display: none !important;
+		content: none;
+		display: none;
 	}
 }
 
