@@ -438,6 +438,20 @@ if you want to view the source, please visit the github repository of this plugi
 .deck-to-anki-settings .dta-field-ref-table tbody tr:last-child td {
   border-bottom: none;
 }
+/* Full-width host when settings are mounted via getSettingDefinitions(). */
+.dta-settings-declarative-host {
+  display: block;
+}
+.dta-settings-declarative-host > .setting-item-info {
+  display: none;
+}
+.dta-settings-declarative-host > .setting-item-control {
+  width: 100%;
+  justify-content: stretch;
+}
+.dta-settings-declarative-host > .setting-item-control > .deck-to-anki-settings {
+  width: 100%;
+}
 .deck-to-anki-modal {
   padding: 1rem;
 }

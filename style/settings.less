@@ -510,3 +510,21 @@
 		}
 	}
 }
+
+/* Full-width host when settings are mounted via getSettingDefinitions(). */
+.dta-settings-declarative-host {
+	display: block;
+
+	> .setting-item-info {
+		display: none;
+	}
+
+	> .setting-item-control {
+		width: 100%;
+		justify-content: stretch;
+
+		> .deck-to-anki-settings {
+			width: 100%;
+		}
+	}
+}

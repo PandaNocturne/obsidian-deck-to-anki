@@ -30,6 +30,31 @@ import type { DeckType } from './domain/head/types';
 import type { DeckViewMode } from './ui/sync-panel/CardPreviewModal';
 import { renderScanScopeSettings } from './ui/settings/renderScanScopeSettings';
 
+/**
+ * Minimal local typings for Obsidian 1.13 declarative settings.
+ * Upstream `obsidian` package typings may lag the runtime API.
+ */
+type SettingDefinitionItem = {
+	type?: 'group' | 'list';
+	heading?: string;
+	name?: string;
+	desc?: string;
+	aliases?: string[];
+	items?: SettingDefinitionItem[];
+	control?: {
+		type: string;
+		key: string;
+		options?: Record<string, string>;
+		defaultValue?: unknown;
+		min?: number;
+		max?: number;
+		step?: number;
+		placeholder?: string;
+	};
+	render?: (setting: Setting) => void | (() => void);
+	visible?: boolean | (() => boolean);
+};
+
 /** Fallback when settings / YAML have no deckLevel. */
 export const DEFAULT_CARD_HEADING_LEVEL = 4;
 
@@ -374,9 +399,79 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		);
 	}
 
+	/**
+	 * Obsidian 1.13+: indexes settings for global search and renders the tab.
+	 * When this returns a non-empty array, the host skips {@link display}.
+	 * Keep {@link display} for Obsidian versions before 1.13.
+	 */
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'Deck To Anki settings',
+				desc: 'Parse modes, AnkiConnect sync, fields, media compression, and card templates.',
+				aliases: [
+					'default deck mode',
+					'deck type',
+					'heading level',
+					'wiki link',
+					'deck view',
+					'scan folder',
+					'ignore folder',
+					'tag filter',
+					'ankiconnect',
+					'deck numbering',
+					'auto check',
+					'require check',
+					'image compress',
+					'compression quality',
+					'card template',
+					'front',
+					'back',
+					'css',
+					'tags',
+					'backlink',
+					'deck tree',
+					'oburi',
+					'aduri',
+					'yaml',
+					'常规',
+					'同步',
+					'字段',
+					'模板',
+					'解析',
+					'检测',
+					'媒体',
+					'牌组',
+				],
+				render: (setting) => {
+					setting.settingEl.addClass('dta-settings-declarative-host');
+					const host = setting.controlEl.createDiv({
+						cls: 'deck-to-anki-settings',
+					});
+					this.mountSettingsUi(host);
+				},
+			},
+		];
+	}
+
+	/** Refresh after imperative mutations (works on 1.13+ and older hosts). */
+	private refreshSettingsUi(): void {
+		const tab = this as PluginSettingTab & { update?: () => void };
+		if (typeof tab.update === 'function') {
+			tab.update();
+			return;
+		}
+		this.display();
+	}
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		this.mountSettingsUi(containerEl);
+	}
+
+	/** Shared tabbed settings UI for display() and getSettingDefinitions(). */
+	private mountSettingsUi(containerEl: HTMLElement): void {
 		containerEl.addClass('deck-to-anki-settings');
 
 		const tabBar = containerEl.createDiv({ cls: 'dta-settings-tabs' });
@@ -862,7 +957,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 			this.editingTemplateId = name;
 			await this.plugin.saveSettings();
 			new Notice(`已新建模板「${name}」`);
-			this.display();
+			this.refreshSettingsUi();
 		};
 		createBtn.addEventListener('click', () => {
 			void createTemplate();
@@ -970,7 +1065,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					this.plugin.settings.deckTemplate = id;
 					await this.plugin.saveSettings();
 					new Notice(`已设「${deckTemplateLabel(id)}」为默认类型`);
-					this.display();
+					this.refreshSettingsUi();
 				})();
 			});
 
@@ -1047,7 +1142,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 					new Notice(`已重置 ${deckTemplateLabel(id)} 的样式`);
 					if (this.editingTemplateId === id) {
-						this.display();
+						this.refreshSettingsUi();
 					}
 				})();
 			});
@@ -1072,7 +1167,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						await this.plugin.saveSettings();
 						new Notice(`已从 Anki 导入「${deckTemplateLabel(id)}」`);
 						if (this.editingTemplateId === id) {
-							this.display();
+							this.refreshSettingsUi();
 						}
 					} catch (error) {
 						const msg =
@@ -1097,7 +1192,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 				event.preventDefault();
 				event.stopPropagation();
 				this.editingTemplateId = expanded ? null : id;
-				this.display();
+				this.refreshSettingsUi();
 			});
 
 			if (!isBuiltInDeckTemplate(id)) {
@@ -1134,7 +1229,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 						}
 						await this.plugin.saveSettings();
 						new Notice(`已删除自定义模板「${id}」`);
-						this.display();
+						this.refreshSettingsUi();
 					})();
 				});
 			}
@@ -1310,7 +1405,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 									}
 								: {}),
 						});
-						this.display();
+						this.refreshSettingsUi();
 					});
 			});
 
@@ -1422,7 +1517,7 @@ export class DeckToAnkiSettingTab extends PluginSettingTab {
 		}
 		await this.plugin.saveSettings();
 		new Notice(`已重命名为「${name}」`);
-		this.display();
+		this.refreshSettingsUi();
 		return true;
 	}
 
