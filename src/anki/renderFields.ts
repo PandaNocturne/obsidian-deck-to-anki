@@ -69,7 +69,7 @@ export async function renderMarkdownToHtml(
 	const component = new Component();
 	component.load();
 	try {
-		const host = document.createElement('div');
+		const host = createDiv();
 		await MarkdownRenderer.render(
 			app,
 			text,

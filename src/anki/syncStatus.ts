@@ -16,6 +16,10 @@ import {
 	toAnkiDeckNameForDeck,
 } from './backlink';
 import { buildAnkiNoteFieldPayload } from './buildAnkiFields';
+import {
+	parseHtmlContainer,
+	serializeHtmlContainer,
+} from './htmlDom';
 import type { MediaCompressCache } from './mediaCompressCache';
 import {
 	allDeckTemplateIdsOrdered,
@@ -108,8 +112,7 @@ function normalizeFieldHtml(html: string): string {
 		return trimmed.normalize('NFC');
 	}
 
-	const host = document.createElement('div');
-	host.innerHTML = trimmed;
+	const host = parseHtmlContainer(trimmed);
 
 	host
 		.querySelectorAll(
@@ -126,7 +129,7 @@ function normalizeFieldHtml(html: string): string {
 		if (!img) {
 			continue;
 		}
-		const clean = document.createElement('img');
+		const clean = createEl('img');
 		clean.setAttribute(
 			'src',
 			canonicalizeMediaSrc(img.getAttribute('src') ?? ''),
@@ -141,7 +144,7 @@ function normalizeFieldHtml(html: string): string {
 	for (const img of Array.from(host.querySelectorAll('img'))) {
 		const src = canonicalizeMediaSrc(img.getAttribute('src') ?? '');
 		const alt = img.getAttribute('alt') ?? '';
-		const clean = document.createElement('img');
+		const clean = createEl('img');
 		clean.setAttribute('src', src);
 		if (alt) {
 			clean.setAttribute('alt', alt);
@@ -149,7 +152,7 @@ function normalizeFieldHtml(html: string): string {
 		img.replaceWith(clean);
 	}
 
-	let out = host.innerHTML.replace(/\r\n/g, '\n').trim();
+	let out = serializeHtmlContainer(host).replace(/\r\n/g, '\n').trim();
 	// Anki may emit void tags / inter-tag whitespace differently.
 	out = out.replace(/\s+\/?>/g, '>').replace(/>\s+</g, '><');
 	return out.normalize('NFC');
@@ -330,8 +333,9 @@ function payloadsMatch(
 
 function clearDeletedChildren(node: DeckNode): void {
 	node.children = node.children.filter(
-		(child) => child.kind !== 'deleted-anki',
-	) as SyncTreeChild[];
+		(child): child is Exclude<SyncTreeChild, DeletedAnkiCardNode> =>
+			child.kind !== 'deleted-anki',
+	);
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
 			clearDeletedChildren(child);
@@ -351,12 +355,16 @@ function clearDeletedInDeckPaths(
 			(t) => p === t || p.startsWith(`${t}::`) || t.startsWith(`${p}::`),
 		);
 	};
-	node.children = node.children.filter((child) => {
-		if (child.kind === 'deleted-anki') {
-			return !matches(child.deckPath);
-		}
-		return true;
-	}) as SyncTreeChild[];
+	node.children = node.children.filter(
+		(
+			child,
+		): child is Exclude<SyncTreeChild, DeletedAnkiCardNode> => {
+			if (child.kind === 'deleted-anki') {
+				return !matches(child.deckPath);
+			}
+			return true;
+		},
+	);
 	for (const child of node.children) {
 		if (child.kind === 'deck') {
 			clearDeletedInDeckPaths(child, scannedDecks);

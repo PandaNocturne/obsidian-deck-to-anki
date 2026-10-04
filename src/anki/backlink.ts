@@ -1,4 +1,4 @@
-import type { App, TFile } from 'obsidian';
+import { type App, TFile } from 'obsidian';
 import { upsertYamlProperty } from '../domain/head/frontmatter';
 import { resolveCardBacklinkTrail } from '../domain/head/deckBacklinkTrail';
 import type {
@@ -499,7 +499,7 @@ export function resolveSourceFile(
 	filePath: string,
 ): TFile | null {
 	const file = app.vault.getAbstractFileByPath(filePath);
-	return file && 'extension' in file ? (file as TFile) : null;
+	return file instanceof TFile ? file : null;
 }
 
 export function deckClassJumpHint(deckClass: DeckClass): string {

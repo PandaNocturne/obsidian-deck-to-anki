@@ -549,7 +549,7 @@ export class SyncPanelUI {
 					: '同步中…';
 		this.progressEl.addClass('is-running');
 		this.progressBarEl.addClass('is-indeterminate');
-		this.progressBarEl.style.width = '';
+		this.progressBarEl.setCssStyles({ width: '' });
 		this.progressLabelEl.setText(label);
 	}
 
@@ -565,14 +565,16 @@ export class SyncPanelUI {
 		this.progressLabelEl.setText(
 			`${label} · ${Math.round(ratio * 100)}%`,
 		);
-		this.progressBarEl.style.width = `${(ratio * 100).toFixed(1)}%`;
+		this.progressBarEl.setCssStyles({
+			width: `${(ratio * 100).toFixed(1)}%`,
+		});
 	}
 
 	/** Hide progress until the next operation. */
 	private hidePanelProgress(): void {
 		this.progressEl.removeClass('is-running');
 		this.progressBarEl.removeClass('is-indeterminate');
-		this.progressBarEl.style.width = '0%';
+		this.progressBarEl.setCssStyles({ width: '0%' });
 		this.progressLabelEl.setText('');
 	}
 
@@ -942,7 +944,7 @@ export class SyncPanelUI {
 		this.checkBtnEl.title = '后台检测中…';
 		this.progressEl.addClass('is-running');
 		this.progressBarEl.addClass('is-indeterminate');
-		this.progressBarEl.style.width = '';
+		this.progressBarEl.setCssStyles({ width: '' });
 		this.progressLabelEl.setText(`后台检测 ${cards.length} 张…`);
 		this.statusEl.setText(
 			`后台检测${scopeLabel} ${cards.length} 张卡片…`,
@@ -1209,11 +1211,12 @@ export class SyncPanelUI {
 		}
 
 		const numbering = this.resolvePanelNumbering();
+		const fallbackParseType: DeckType = 'head';
 		const treeOptions = {
 			parseType:
 				this.parsed?.deckType ??
 				this.state.parseType ??
-				('head' as DeckType),
+				fallbackParseType,
 			showRootMeta:
 				!isForest &&
 				this.parsed?.deckType !== 'card' &&

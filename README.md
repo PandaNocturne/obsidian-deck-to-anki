@@ -1,5 +1,23 @@
 # Deck To Anki
 
+## Overview
+
+**Deck To Anki** is an Obsidian community plugin that turns notes into Anki decks via [AnkiConnect](https://foosoft.net/projects/anki-connect/). Write cards in Obsidian (heading trees, lists, single-file cards, or filename-as-front), preview and select them in the sync panel, then push, update, or delete notes in Anki. Optional backlinks jump back to the source note, heading, or block.
+
+### Features
+
+- **Notes as cards** — author Q&A cards in Obsidian without a separate card editor
+- **Five parse modes** — `head` / `list` / `card` / `title` / `file`
+- **Reversible templates** — built-in `ob-deck-basic++` for flipped review
+- **Rich content** — images, math, tables, fenced code (Prism highlighting), and tags
+- **Wiki links & embeds** — `[[note]]` and `![[media]]` support
+- **Backlinks** — open the source in Obsidian from Anki (ObURI / Advanced URI)
+- **Image compression** — optional compress-on-sync (vault files unchanged)
+
+Requirements: Obsidian ≥ 1.7.2, Anki + AnkiConnect.
+
+---
+
 ## 插件简介
 
 Deck To Anki 是 Obsidian 中用来快速制作成Anki牌组的插件，通过 [AnkiConnect](https://foosoft.net/projects/anki-connect/) 将笔记推送到 Anki。可以单向同步、更新、修改卡片，以及反向定位到 Obsidian 卡片所在的笔记、标题、块。

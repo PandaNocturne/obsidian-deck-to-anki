@@ -17,7 +17,7 @@ export function registerCommands(plugin: DeckToAnkiPlugin): void {
 
 	plugin.addCommand({
 		id: 'open-anki-sync-panel',
-		name: 'Deck To Anki',
+		name: 'Open sync panel',
 		callback: () => openSyncPanel(plugin),
 	});
 

@@ -63,7 +63,7 @@ export async function compressImageForAnki(
 			return null;
 		}
 
-		const canvas = document.createElement('canvas');
+		const canvas = createEl('canvas');
 		canvas.width = w;
 		canvas.height = h;
 		const ctx = canvas.getContext('2d');

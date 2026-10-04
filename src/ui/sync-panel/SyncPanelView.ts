@@ -58,7 +58,7 @@ export async function openSyncPanelView(
 	if (existing.length > 0) {
 		const leaf = existing[0];
 		if (leaf) {
-			workspace.revealLeaf(leaf);
+			void workspace.revealLeaf(leaf);
 		}
 		return;
 	}
@@ -71,5 +71,5 @@ export async function openSyncPanelView(
 		type: SYNC_PANEL_VIEW_TYPE,
 		active: true,
 	});
-	workspace.revealLeaf(leaf);
+	void workspace.revealLeaf(leaf);
 }
